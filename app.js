@@ -50,6 +50,9 @@ const syncSimulationState = () => {
 const showMainMenu = () => {
   if (mainMenu) mainMenu.classList.remove('hidden');
   if (settingsScreen) settingsScreen.classList.add('hidden');
+  if (launchSequence) launchSequence.classList.add('hidden');
+  if (dashboardScreen) dashboardScreen.classList.add('hidden');
+  if (appShell) appShell.classList.add('hidden');
 };
 
 if (startButton && mainMenu && settingsScreen) {
@@ -131,5 +134,27 @@ optionGroups.forEach((option) => {
     if (radio) radio.checked = true;
 
     syncSimulationState();
+  });
+});
+
+const launchDemoButtons = document.querySelectorAll('.launch-demo-button');
+launchDemoButtons.forEach((button) => {
+  button.addEventListener('click', () => {
+    if (mainMenu) mainMenu.classList.remove('hidden');
+    if (settingsScreen) settingsScreen.classList.add('hidden');
+    if (launchSequence) launchSequence.classList.add('hidden');
+    if (dashboardScreen) dashboardScreen.classList.add('hidden');
+    if (appShell) appShell.classList.add('hidden');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  });
+});
+
+const showcaseButtons = document.querySelectorAll('.showcase-button');
+showcaseButtons.forEach((button) => {
+  button.addEventListener('click', () => {
+    const section = document.getElementById('experience');
+    if (section) {
+      section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
   });
 });
