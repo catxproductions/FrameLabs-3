@@ -36,7 +36,43 @@ const simState = {
   mode: 'Standard',
   size: 'Compact',
   realism: 'Balanced',
-  quality: 'Performance'
+  quality: 'Performance',
+  fps: 144,
+  latency: 12,
+  load: 72,
+  environment: 'Skyline'
+};
+
+const updateDashboardMetrics = () => {
+  const latencyNode = document.querySelector('#dashboardScreen .hud-metrics div:nth-child(1) strong');
+  const fpsNode = document.querySelector('#dashboardScreen .hud-metrics div:nth-child(2) strong');
+  const loadNode = document.querySelector('#dashboardScreen .hud-metrics div:nth-child(3) strong');
+
+  if (latencyNode) latencyNode.textContent = `${simState.latency}ms`;
+  if (fpsNode) fpsNode.textContent = simState.fps;
+  if (loadNode) loadNode.textContent = `${simState.load}%`;
+
+  const envNameNode = document.querySelector('#dashboardScreen .hero-panel-copy h2');
+  const envMetaNode = document.querySelector('#dashboardScreen .hero-panel-copy p');
+  if (envNameNode) envNameNode.textContent = `${simState.environment} Nexus`;
+  if (envMetaNode) {
+    envMetaNode.textContent = `High-density ${simState.realism.toLowerCase()} simulation layer with adaptive ${simState.mode.toLowerCase()} compute and live scene reconstruction.`;
+  }
+
+  const statusNodes = document.querySelectorAll('#dashboardScreen .dot-row');
+  if (statusNodes.length > 0) {
+    const modeText = `${simState.mode} compute active`;
+    const realismText = `${simState.realism} fidelity`;
+    statusNodes[0].innerHTML = `<span class="online-dot"></span> ${modeText}`;
+    statusNodes[1].innerHTML = `<span class="online-dot"></span> ${realismText}`;
+  }
+
+  const telemetry = document.querySelectorAll('#dashboardScreen .telemetry strong');
+  if (telemetry.length >= 3) {
+    telemetry[0].textContent = `${Math.max(60, Math.min(98, simState.load - 5))}°`;
+    telemetry[1].textContent = `${Math.max(55, Math.min(99, simState.load + 8))}%`;
+    telemetry[2].textContent = `${(simState.fps / 120).toFixed(1)}x`;
+  }
 };
 
 const syncSimulationState = () => {
@@ -44,22 +80,74 @@ const syncSimulationState = () => {
   simState.size = getSelectedOption('size');
   simState.realism = getSelectedOption('realism');
   simState.quality = getSelectedOption('quality');
+
+  const qualityMap = {
+    Performance: { fps: 120, latency: 14, load: 65 },
+    'High Quality': { fps: 90, latency: 18, load: 73 },
+    Ultra: { fps: 75, latency: 22, load: 81 },
+    Prototype: { fps: 110, latency: 16, load: 70 }
+  };
+
+  const modeMap = {
+    Standard: { latency: 12 },
+    'GPU Accelerated': { latency: 9 },
+    'Ultra Render': { latency: 7 },
+    Distributed: { latency: 6 }
+  };
+
+  const qualityPreset = qualityMap[simState.quality] || qualityMap.Performance;
+  const modePreset = modeMap[simState.mode] || modeMap.Standard;
+
+  simState.fps = qualityPreset.fps;
+  simState.latency = modePreset.latency + qualityPreset.latency;
+  simState.load = qualityPreset.load;
+  simState.environment = ['Skyline', 'Tundra', 'Abyss'][Math.floor(Math.random() * 3)];
+
   window.framelabsSimState = { ...simState };
+  updateDashboardMetrics();
+};
+
+const showScreen = (screenName) => {
+  const screens = {
+    main: mainMenu,
+    settings: settingsScreen,
+    launch: launchSequence,
+    dashboard: dashboardScreen,
+  };
+
+  const screenOrder = [mainMenu, settingsScreen, launchSequence, dashboardScreen];
+  screenOrder.forEach((screen) => {
+    if (!screen) return;
+    screen.classList.add('hidden');
+  });
+
+  if (screenName === 'main') {
+    if (mainMenu) mainMenu.classList.remove('hidden');
+  }
+  if (screenName === 'settings') {
+    if (settingsScreen) settingsScreen.classList.remove('hidden');
+  }
+  if (screenName === 'launch') {
+    if (launchSequence) launchSequence.classList.remove('hidden');
+  }
+  if (screenName === 'dashboard') {
+    if (dashboardScreen) dashboardScreen.classList.remove('hidden');
+  }
+
+  if (appShell) {
+    const shouldHideShell = screenName !== 'main';
+    appShell.classList.toggle('hidden', shouldHideShell);
+  }
 };
 
 const showMainMenu = () => {
-  if (mainMenu) mainMenu.classList.remove('hidden');
-  if (settingsScreen) settingsScreen.classList.add('hidden');
-  if (launchSequence) launchSequence.classList.add('hidden');
-  if (dashboardScreen) dashboardScreen.classList.add('hidden');
-  if (appShell) appShell.classList.add('hidden');
+  showScreen('main');
 };
 
 if (startButton && mainMenu && settingsScreen) {
   startButton.addEventListener('click', () => {
     syncSimulationState();
-    mainMenu.classList.add('hidden');
-    settingsScreen.classList.remove('hidden');
+    showScreen('settings');
   });
 }
 
@@ -69,8 +157,7 @@ if (backToMenu) backToMenu.addEventListener('click', showMainMenu);
 if (launchSimulation && settingsScreen && launchSequence && dashboardScreen && appShell) {
   launchSimulation.addEventListener('click', () => {
     syncSimulationState();
-    settingsScreen.classList.add('hidden');
-    launchSequence.classList.remove('hidden');
+    showScreen('launch');
 
     const launchSummary = [
       `Mode: ${simState.mode}`,
@@ -96,20 +183,14 @@ if (launchSimulation && settingsScreen && launchSequence && dashboardScreen && a
       progress += 20;
       if (launchProgress) launchProgress.style.width = `${progress}%`;
       if (launchStatus) {
-        launchStatus.textContent = statuses[Math.min(Math.floor(progress / 20), statuses.length - 1)] + ` • ${simState.size}`;
+        const label = statuses[Math.min(Math.floor(progress / 20), statuses.length - 1)] || 'Launching system...';
+        launchStatus.textContent = `${label} • ${simState.size}`;
       }
 
       if (progress >= 100) {
         setTimeout(() => {
-          launchSequence.classList.add('hidden');
-          dashboardScreen.classList.remove('hidden');
-          appShell.classList.add('hidden');
-
-          const statusNodes = document.querySelectorAll('.dot-row');
-          if (statusNodes.length > 0) {
-            statusNodes[0].innerHTML = `<span class="online-dot"></span> ${simState.mode} compute active`;
-            statusNodes[1].innerHTML = `<span class="online-dot"></span> ${simState.realism} fidelity`;
-          }
+          showScreen('dashboard');
+          updateDashboardMetrics();
         }, 500);
         return;
       }
@@ -137,24 +218,32 @@ optionGroups.forEach((option) => {
   });
 });
 
-const launchDemoButtons = document.querySelectorAll('.launch-demo-button');
-launchDemoButtons.forEach((button) => {
-  button.addEventListener('click', () => {
-    if (mainMenu) mainMenu.classList.remove('hidden');
-    if (settingsScreen) settingsScreen.classList.add('hidden');
-    if (launchSequence) launchSequence.classList.add('hidden');
-    if (dashboardScreen) dashboardScreen.classList.add('hidden');
-    if (appShell) appShell.classList.add('hidden');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+const bindLaunchActions = () => {
+  const launchButtons = document.querySelectorAll('.launch-demo-button');
+  launchButtons.forEach((button) => {
+    button.addEventListener('click', () => {
+      syncSimulationState();
+      showScreen('settings');
+    });
   });
-});
 
-const showcaseButtons = document.querySelectorAll('.showcase-button');
-showcaseButtons.forEach((button) => {
-  button.addEventListener('click', () => {
-    const section = document.getElementById('experience');
-    if (section) {
-      section.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
+  const showcaseButtons = document.querySelectorAll('.showcase-button');
+  showcaseButtons.forEach((button) => {
+    button.addEventListener('click', () => {
+      const section = document.getElementById('experience');
+      if (section) {
+        section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    });
   });
-});
+};
+
+bindLaunchActions();
+
+const appReadyState = document.getElementById('appReadyState');
+if (appReadyState) {
+  appReadyState.textContent = 'FrameLabs 3 ready';
+}
+
+showMainMenu();
+updateDashboardMetrics();
