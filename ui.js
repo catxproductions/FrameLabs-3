@@ -3,7 +3,10 @@
     const { runtime, settings } = window.FrameLabs3State.state;
     const simulation = window.FrameLabs3Simulation && window.FrameLabs3Simulation.instance;
     const model = simulation && simulation.model;
-    const set = (selector, value) => { const node = document.querySelector(selector); if (node) node.textContent = String(value); };
+    const set = (selector, value) => {
+      const node = document.querySelector(selector);
+      if (node) node.textContent = String(value);
+    };
 
     set('#dashboardScreen .hud-metrics div:nth-child(1) strong', `${Number(runtime.latency || 0).toFixed(2)}ms`);
     set('#dashboardScreen .hud-metrics div:nth-child(2) strong', runtime.fps || 0);

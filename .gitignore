@@ -1,0 +1,15 @@
+# Build output and local tooling
+node_modules/
+dist/
+build/
+.cache/
+*.log
+.DS_Store
+Thumbs.db
+
+# Planned AI-agent work: keep these locally for future development but don't publish yet.
+# Remove this section when the agent plan is ready to be added to the product.
+ai-agents/
+agent-plans/
+AGENTS.md
+.agent/
