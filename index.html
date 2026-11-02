@@ -49,6 +49,122 @@
       </div>
     </div>
 
+    <div class="settings-screen hidden" id="settingsScreen">
+      <div class="settings-backdrop"></div>
+      <div class="settings-panel reveal">
+        <div class="settings-header">
+          <div>
+            <p class="menu-tag">Simulation Setup</p>
+            <h2>Configure your run</h2>
+          </div>
+          <button class="close-button" id="closeSettings" aria-label="Close settings">✕</button>
+        </div>
+
+        <div class="settings-grid">
+          <section class="settings-group">
+            <h3>Computing mode</h3>
+            <label class="option selected">
+              <input type="radio" name="mode" checked />
+              <span>Standard</span>
+              <small>Balanced for daily use</small>
+            </label>
+            <label class="option">
+              <input type="radio" name="mode" />
+              <span>GPU Accelerated</span>
+              <small>Fast preview + richer shaders</small>
+            </label>
+            <label class="option">
+              <input type="radio" name="mode" />
+              <span>Ultra Render</span>
+              <small>Maximum fidelity</small>
+            </label>
+            <label class="option">
+              <input type="radio" name="mode" />
+              <span>Distributed</span>
+              <small>Multi-node large simulations</small>
+            </label>
+          </section>
+
+          <section class="settings-group">
+            <h3>Simulation size</h3>
+            <label class="option selected">
+              <input type="radio" name="size" checked />
+              <span>Compact</span>
+              <small>Small environment / quick test</small>
+            </label>
+            <label class="option">
+              <input type="radio" name="size" />
+              <span>Medium</span>
+              <small>Balanced scene detail</small>
+            </label>
+            <label class="option">
+              <input type="radio" name="size" />
+              <span>Large</span>
+              <small>Expanded world + richer data</small>
+            </label>
+            <label class="option">
+              <input type="radio" name="size" />
+              <span>Massive</span>
+              <small>High-complexity production run</small>
+            </label>
+          </section>
+
+          <section class="settings-group">
+            <h3>Realism</h3>
+            <label class="option selected">
+              <input type="radio" name="realism" checked />
+              <span>Balanced</span>
+              <small>Natural response and clean visuals</small>
+            </label>
+            <label class="option">
+              <input type="radio" name="realism" />
+              <span>High</span>
+              <small>More detailed motion and lighting</small>
+            </label>
+            <label class="option">
+              <input type="radio" name="realism" />
+              <span>Cinematic</span>
+              <small>Premium motion and filmic polish</small>
+            </label>
+            <label class="option">
+              <input type="radio" name="realism" />
+              <span>Experimental</span>
+              <small>Art-driven nonstandard behavior</small>
+            </label>
+          </section>
+
+          <section class="settings-group">
+            <h3>Graphics preset</h3>
+            <label class="option selected">
+              <input type="radio" name="quality" checked />
+              <span>Performance</span>
+              <small>Fastest stable output</small>
+            </label>
+            <label class="option">
+              <input type="radio" name="quality" />
+              <span>High Quality</span>
+              <small>Better shadows and materials</small>
+            </label>
+            <label class="option">
+              <input type="radio" name="quality" />
+              <span>Ultra</span>
+              <small>Maximum visual fidelity</small>
+            </label>
+            <label class="option">
+              <input type="radio" name="quality" />
+              <span>Prototype</span>
+              <small>Creative exploration mode</small>
+            </label>
+          </section>
+        </div>
+
+        <div class="settings-actions">
+          <button class="secondary settings-back" id="backToMenu">Back</button>
+          <button class="primary settings-launch" id="launchSimulation">Launch Simulation</button>
+        </div>
+      </div>
+    </div>
+
     <header class="topbar">
       <nav class="nav container">
         <div class="brand">
