@@ -1,23 +1,11 @@
-# FrameLabs 3
+## FrameLabs 3
 
-A smoother, more visually refined front-end concept for the next iteration of FrameLabs.
+FrameLabs 3 is an independent, browser-based interactive simulation prototype. It runs from the static site without installing packages or running terminal commands. The app uses a lightweight 2D agent-motion model in the browser; it does not connect to FrameLabs 2 or claim to use a real GPU/distributed backend.
 
-## Quick start
+### Open the app
 
-```bash
-npm install
-npm run dev
-```
+Open `index.html` in a modern browser, or visit the repository's GitHub Pages site. No setup commands are required for users. The repository includes an optional Vite workflow for contributors (`npm install`, `npm run dev`, `npm run build`), but it is not required to use the static app.
 
-Then open the local URL shown in the terminal.
+### Runtime controls
 
-## Project goals
-
-- cleaner visual hierarchy
-- more polished motion design
-- premium landing page aesthetic
-- easier iteration for future product screens
-
-## Notes
-
-This repo starts with a lightweight static front-end foundation so the visual direction can be prototyped quickly.
+Choose simulation settings, launch, then use the environment buttons and controls. The canvas shows moving agents; FPS is measured from the browser animation loop, compute time is measured locally, and load is estimated from active model complexity. These are local simulation telemetry, not hardware or network benchmarks.

@@ -1,29 +1,25 @@
 (function () {
-  function getContainerText(selector) {
-    const node = document.querySelector(selector);
-    return node ? node.textContent.trim() : '';
-  }
+  const environmentColors = {
+    Skyline: ['#141d3b', '#64baff', '#67f2dc'],
+    Tundra: ['#172a3d', '#a8ddff', '#d2f3ff'],
+    Abyss: ['#091a2c', '#568bff', '#69e0d1']
+  };
 
   function renderDashboard() {
-    const runtime = window.FrameLabs3State.state.runtime;
-    const settings = window.FrameLabs3State.state.settings;
-
-    const metricEls = {
-      latency: document.querySelector('#dashboardScreen .hud-metrics div:nth-child(1) strong'),
-      fps: document.querySelector('#dashboardScreen .hud-metrics div:nth-child(2) strong'),
-      load: document.querySelector('#dashboardScreen .hud-metrics div:nth-child(3) strong')
+    const model = window.FrameLabs3State.state;
+    const { runtime, settings } = model;
+    const set = (selector, value) => {
+      const node = document.querySelector(selector);
+      if (node) node.textContent = String(value);
     };
 
-    if (metricEls.latency) metricEls.latency.textContent = `${runtime.latency}ms`;
-    if (metricEls.fps) metricEls.fps.textContent = String(runtime.fps);
-    if (metricEls.load) metricEls.load.textContent = `${runtime.load}%`;
+    set('#dashboardScreen .hud-metrics div:nth-child(1) strong', `${runtime.latency.toFixed(runtime.latency < 10 ? 1 : 0)}ms`);
+    set('#dashboardScreen .hud-metrics div:nth-child(2) strong', runtime.fps);
+    set('#dashboardScreen .hud-metrics div:nth-child(3) strong', `${runtime.load}%`);
+    set('#dashboardScreen .hero-panel-copy h2', `${runtime.environment} Nexus`);
 
-    const envHeader = document.querySelector('#dashboardScreen .hero-panel-copy h2');
-    const envText = document.querySelector('#dashboardScreen .hero-panel-copy p');
-    if (envHeader) envHeader.textContent = `${runtime.environment} Nexus`;
-    if (envText) {
-      envText.textContent = `High-density ${settings.realism.toLowerCase()} simulation layer with adaptive ${settings.mode.toLowerCase()} compute and live scene reconstruction.`;
-    }
+    const description = document.querySelector('#dashboardScreen .hero-panel-copy p');
+    if (description) description.textContent = `${runtime.agents} autonomous agents are interacting in a browser-based ${settings.realism.toLowerCase()} environment. Simulation time: ${runtime.elapsed.toFixed(1)}s.`;
 
     const stats = document.querySelectorAll('#dashboardScreen .panel-metric strong');
     if (stats.length >= 4) {
@@ -35,47 +31,40 @@
 
     const telemetry = document.querySelectorAll('#dashboardScreen .telemetry strong');
     if (telemetry.length >= 3) {
-      telemetry[0].textContent = `${Math.max(60, Math.min(98, runtime.energy - 5))}°`;
-      telemetry[1].textContent = `${Math.max(50, Math.min(99, runtime.load + 8))}%`;
-      telemetry[2].textContent = `${(runtime.fps / 120).toFixed(1)}x`;
+      telemetry[0].textContent = `${Math.round(34 + runtime.load * 0.42)}°`;
+      telemetry[1].textContent = `${runtime.agents} agents`;
+      telemetry[2].textContent = `${runtime.scans} scans`;
     }
 
-    const systemStatus = document.querySelectorAll('#dashboardScreen .status-list .dot-row');
-    if (systemStatus.length >= 3) {
-      systemStatus[0].innerHTML = `<span class="online-dot"></span> ${settings.mode} compute active`;
-      systemStatus[1].innerHTML = `<span class="online-dot"></span> ${settings.realism} fidelity`;
-      systemStatus[2].innerHTML = `<span class="online-dot"></span> ${runtime.status}`;
+    const rows = document.querySelectorAll('#dashboardScreen .status-list .dot-row');
+    if (rows.length >= 3) {
+      rows[0].textContent = `${settings.mode} browser runtime`;
+      rows[1].textContent = `${runtime.environment} scene active`;
+      rows[2].textContent = runtime.status;
     }
 
-    const envTabs = document.querySelectorAll('.env-item');
-    envTabs.forEach((tab) => {
-      const active = tab.textContent.trim() === runtime.environment;
-      tab.classList.toggle('active', active);
-    });
-  }
-
-  function setScreenVisibility(name) {
-    const screens = {
-      main: document.getElementById('mainMenu'),
-      settings: document.getElementById('settingsScreen'),
-      launch: document.getElementById('launchSequence'),
-      dashboard: document.getElementById('dashboardScreen')
-    };
-
-    Object.keys(screens).forEach((key) => {
-      const node = screens[key];
-      if (!node) return;
-      node.classList.toggle('hidden', key !== name);
+    document.querySelectorAll('.env-item').forEach((item) => {
+      const active = item.dataset.environment === runtime.environment;
+      item.classList.toggle('active', active);
+      item.setAttribute('aria-pressed', String(active));
     });
 
-    const appShell = document.getElementById('appShell');
-    if (appShell) {
-      appShell.classList.toggle('hidden', name !== 'main');
+    const controlButtons = document.querySelectorAll('[data-action]');
+    controlButtons.forEach((button) => {
+      const action = button.dataset.action;
+      const enabled = action === 'boost' ? runtime.boost : action === 'orbit' ? runtime.orbit : action === 'auto' ? runtime.auto : false;
+      button.classList.toggle('active', enabled);
+      if (['boost', 'orbit', 'auto'].includes(action)) button.setAttribute('aria-pressed', String(enabled));
+    });
+
+    const preview = document.querySelector('.world-preview');
+    if (preview) {
+      const colors = environmentColors[runtime.environment] || environmentColors.Skyline;
+      preview.style.setProperty('--scene-base', colors[0]);
+      preview.style.setProperty('--scene-a', colors[1]);
+      preview.style.setProperty('--scene-b', colors[2]);
     }
   }
 
-  window.FrameLabs3UI = {
-    renderDashboard,
-    setScreenVisibility
-  };
+  window.FrameLabs3UI = { renderDashboard };
 })();

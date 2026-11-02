@@ -1,188 +1,113 @@
 (function () {
-  const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
-
-  function getSelectedOption(groupName) {
-    const option = document.querySelector(`input[name="${groupName}"]:checked`);
-    if (!option) return 'standard';
-    return option.value || option.closest('.option')?.querySelector('span')?.textContent || 'standard';
+  function selected(name) {
+    const input = document.querySelector(`input[name="${name}"]:checked`);
+    return input ? input.value : '';
   }
 
-  function syncSettingsFromDOM() {
-    const next = {
-      mode: getSelectedOption('mode'),
-      size: getSelectedOption('size'),
-      realism: getSelectedOption('realism'),
-      quality: getSelectedOption('quality')
-    };
+  function setScreen(name) {
+    const names = ['mainMenu', 'settingsScreen', 'launchSequence', 'dashboardScreen'];
+    const ids = { main: 'mainMenu', settings: 'settingsScreen', launch: 'launchSequence', dashboard: 'dashboardScreen' };
+    names.forEach((id) => {
+      const node = document.getElementById(id);
+      if (node) node.classList.toggle('hidden', id !== ids[name]);
+    });
+    const shell = document.getElementById('appShell');
+    if (shell) shell.classList.toggle('hidden', name !== 'main');
+  }
 
-    if (!window.FrameLabs3State || typeof window.FrameLabs3State.buildStateFromOptions !== 'function') {
-      return next;
-    }
-
-    const state = window.FrameLabs3State.buildStateFromOptions(next);
+  function configure() {
+    const state = window.FrameLabs3State.configure({ mode: selected('mode'), size: selected('size'), realism: selected('realism'), quality: selected('quality') });
+    window.FrameLabs3UI.renderDashboard();
     return state;
   }
 
-  function setVisibleScreen(name) {
-    const screens = {
-      main: document.getElementById('mainMenu'),
-      settings: document.getElementById('settingsScreen'),
-      launch: document.getElementById('launchSequence'),
-      dashboard: document.getElementById('dashboardScreen')
-    };
+  function launch() {
+    const state = configure();
+    const progress = document.getElementById('launchProgress');
+    const status = document.getElementById('launchStatus');
+    const button = document.getElementById('launchSimulation');
+    if (button) button.disabled = true;
+    if (progress) progress.style.width = '0%';
+    setScreen('launch');
 
-    Object.keys(screens).forEach((key) => {
-      const node = screens[key];
-      if (!node) return;
-      node.classList.toggle('hidden', key !== name);
-    });
-
-    const appShell = document.getElementById('appShell');
-    if (appShell) {
-      appShell.classList.toggle('hidden', name !== 'main');
-    }
-  }
-
-  function startLaunchSequence() {
-    const settingsState = syncSettingsFromDOM();
-    const state = settingsState || window.FrameLabs3State.state;
-    const launchStatusNode = document.getElementById('launchStatus');
-    const launchProgressNode = document.getElementById('launchProgress');
-
-    setVisibleScreen('launch');
-
-    const launchSummary = [
-      `Mode: ${state.settings.mode}`,
-      `Size: ${state.settings.size}`,
-      `Realism: ${state.settings.realism}`,
-      `Quality: ${state.settings.quality}`
-    ].join(' • ');
-
-    if (launchStatusNode) {
-      launchStatusNode.textContent = `Loading ${state.settings.mode} profile • ${launchSummary}`;
-    }
-
-    let progress = 0;
-    const statuses = [
-      'Preparing environment...',
-      'Compiling simulation...',
-      `Loading ${state.settings.mode.toLowerCase()} agents...`,
-      `Optimizing ${state.settings.quality.toLowerCase()} render...`,
-      'Launching system...'
-    ];
-
+    let step = 0;
+    const messages = ['Creating scene', 'Seeding agents', 'Starting browser simulation', 'Measuring runtime', 'Ready'];
     const tick = () => {
-      progress += 20;
-      if (launchProgressNode) {
-        launchProgressNode.style.width = `${progress}%`;
-      }
-
-      if (launchStatusNode) {
-        const label = statuses[Math.min(Math.floor(progress / 20), statuses.length - 1)] || 'Launching system...';
-        launchStatusNode.textContent = `${label} • ${state.settings.size}`;
-      }
-
-      if (progress >= 100) {
-        setTimeout(() => {
-          if (window.FrameLabs3UI && typeof window.FrameLabs3UI.renderDashboard === 'function') {
-            window.FrameLabs3UI.renderDashboard();
-          }
-          setVisibleScreen('dashboard');
-        }, 500);
+      step += 1;
+      if (progress) progress.style.width = `${step * 20}%`;
+      if (status) status.textContent = `${messages[step - 1]} · ${state.settings.size} · ${state.settings.quality}`;
+      if (step < messages.length) {
+        setTimeout(tick, 260);
         return;
       }
-
-      setTimeout(tick, 420);
-    };
-
-    setTimeout(tick, 300);
-  }
-
-  function bindEventHandlers() {
-    const startButton = document.getElementById('startButton');
-    const closeSettings = document.getElementById('closeSettings');
-    const backToMenu = document.getElementById('backToMenu');
-    const launchSimulation = document.getElementById('launchSimulation');
-
-    if (startButton) {
-      startButton.addEventListener('click', () => {
-        syncSettingsFromDOM();
-        setVisibleScreen('settings');
-      });
-    }
-
-    if (closeSettings) {
-      closeSettings.addEventListener('click', () => setVisibleScreen('main'));
-    }
-
-    if (backToMenu) {
-      backToMenu.addEventListener('click', () => setVisibleScreen('main'));
-    }
-
-    if (launchSimulation) {
-      launchSimulation.addEventListener('click', startLaunchSequence);
-    }
-
-    document.querySelectorAll('.option').forEach((option) => {
-      option.addEventListener('click', () => {
-        const group = option.parentElement;
-        if (!group) return;
-
-        group.querySelectorAll('.option').forEach((item) => item.classList.remove('selected'));
-        option.classList.add('selected');
-
-        const radio = option.querySelector('input');
-        if (radio) radio.checked = true;
-
-        syncSettingsFromDOM();
-
-        if (window.FrameLabs3UI && typeof window.FrameLabs3UI.renderDashboard === 'function') {
-          window.FrameLabs3UI.renderDashboard();
-        }
-      });
-    });
-
-    document.querySelectorAll('.launch-demo-button').forEach((button) => {
-      button.addEventListener('click', () => {
-        syncSettingsFromDOM();
-        setVisibleScreen('settings');
-      });
-    });
-
-    document.querySelectorAll('.showcase-button').forEach((button) => {
-      button.addEventListener('click', () => {
-        const section = document.getElementById('experience');
-        if (section) {
-          section.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }
-      });
-    });
-  }
-
-  function bootstrap() {
-    if (!window.FrameLabs3State) {
-      return;
-    }
-
-    syncSettingsFromDOM();
-    bindEventHandlers();
-
-    if (window.FrameLabs3UI && typeof window.FrameLabs3UI.renderDashboard === 'function') {
-      window.FrameLabs3UI.renderDashboard();
-    }
-
-    setVisibleScreen('main');
-
-    if (window.FrameLabs3Simulation && window.FrameLabs3Simulation.createSimulation) {
-      const sim = window.FrameLabs3Simulation.createSimulation();
+      const canvas = document.getElementById('simulationCanvas');
+      const sim = window.FrameLabs3Simulation.createSimulation(canvas);
+      window.FrameLabs3Simulation.instance?.stop();
       window.FrameLabs3Simulation.instance = sim;
+      setScreen('dashboard');
       sim.start();
-    }
+      if (button) button.disabled = false;
+    };
+    setTimeout(tick, 150);
   }
 
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', bootstrap);
-  } else {
-    bootstrap();
+  function bind() {
+    document.getElementById('startButton')?.addEventListener('click', () => { configure(); setScreen('settings'); });
+    document.getElementById('closeSettings')?.addEventListener('click', () => setScreen('main'));
+    document.getElementById('backToMenu')?.addEventListener('click', () => setScreen('main'));
+    document.getElementById('launchSimulation')?.addEventListener('click', launch);
+    document.getElementById('exitDashboard')?.addEventListener('click', () => { window.FrameLabs3Simulation.instance?.stop(); setScreen('main'); });
+
+    document.querySelectorAll('.option input').forEach((input) => {
+      input.addEventListener('change', () => {
+        document.querySelectorAll(`input[name="${input.name}"]`).forEach((radio) => radio.closest('.option')?.classList.toggle('selected', radio.checked));
+        configure();
+      });
+    });
+
+    document.querySelectorAll('.launch-demo-button').forEach((button) => button.addEventListener('click', () => { configure(); setScreen('settings'); }));
+    document.querySelectorAll('.showcase-button').forEach((button) => button.addEventListener('click', () => document.getElementById('experience')?.scrollIntoView({ behavior: 'smooth' })));
+
+    document.querySelectorAll('.env-item').forEach((item) => item.addEventListener('click', () => {
+      window.FrameLabs3State.setEnvironment(item.dataset.environment);
+      window.FrameLabs3UI.renderDashboard();
+    }));
+
+    document.querySelectorAll('[data-action]').forEach((button) => button.addEventListener('click', () => {
+      const action = button.dataset.action;
+      if (action === 'scan') window.FrameLabs3State.scan();
+      else if (action === 'focus') window.FrameLabs3Simulation.instance?.focus();
+      else window.FrameLabs3State.toggle(action);
+      window.FrameLabs3UI.renderDashboard();
+    }));
+
+    document.getElementById('shuffleEnvironment')?.addEventListener('click', () => {
+      const options = ['Skyline', 'Tundra', 'Abyss'].filter((item) => item !== window.FrameLabs3State.state.runtime.environment);
+      window.FrameLabs3State.setEnvironment(options[Math.floor(Math.random() * options.length)]);
+      window.FrameLabs3UI.renderDashboard();
+    });
+
+    document.getElementById('toggleAuto')?.addEventListener('click', () => {
+      window.FrameLabs3State.toggle('auto');
+      window.FrameLabs3UI.renderDashboard();
+    });
+
+    window.addEventListener('resize', () => window.FrameLabs3Simulation.instance?.resize());
   }
+
+  function init() {
+    const revealElements = document.querySelectorAll('.reveal');
+    if ('IntersectionObserver' in window) {
+      const observer = new IntersectionObserver((entries) => entries.forEach((entry) => entry.isIntersecting && entry.target.classList.add('visible')), { threshold: 0.15 });
+      revealElements.forEach((element) => observer.observe(element));
+    } else {
+      revealElements.forEach((element) => element.classList.add('visible'));
+    }
+    bind();
+    configure();
+    setScreen('main');
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init, { once: true });
+  else init();
 })();

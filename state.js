@@ -1,22 +1,11 @@
 (function () {
   const defaults = {
-    settings: {
-      mode: 'Standard',
-      size: 'Compact',
-      realism: 'Balanced',
-      quality: 'Performance'
-    },
+    settings: { mode: 'Standard', size: 'Compact', realism: 'Balanced', quality: 'Performance' },
     runtime: {
-      fps: 144,
-      latency: 12,
-      load: 72,
-      energy: 84,
-      integrity: 96,
-      signal: 'Stable',
-      threat: 'Low',
-      environment: 'Skyline',
-      deck: 'Lab Delta',
-      status: 'System nominal'
+      fps: 0, latency: 0, load: 0, energy: 100, integrity: 100,
+      signal: 'Stable', threat: 'Low', environment: 'Skyline',
+      status: 'Ready to simulate', agents: 0, scans: 0, elapsed: 0,
+      boost: false, orbit: true, auto: true
     }
   };
 
@@ -25,71 +14,58 @@
     runtime: { ...defaults.runtime }
   };
 
-  const modeMap = {
-    Standard: { latency: 12, fps: 140, load: 68 },
-    'GPU Accelerated': { latency: 9, fps: 160, load: 74 },
-    'Ultra Render': { latency: 7, fps: 180, load: 83 },
-    Distributed: { latency: 6, fps: 200, load: 88 }
-  };
+  const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
-  const qualityMap = {
-    Performance: { fps: 120, latency: 14, load: 65, energy: 82 },
-    'High Quality': { fps: 90, latency: 18, load: 73, energy: 88 },
-    Ultra: { fps: 75, latency: 22, load: 81, energy: 92 },
-    Prototype: { fps: 110, latency: 16, load: 70, energy: 86 }
-  };
+  function configure(settings) {
+    state.settings = {
+      mode: settings.mode || defaults.settings.mode,
+      size: settings.size || defaults.settings.size,
+      realism: settings.realism || defaults.settings.realism,
+      quality: settings.quality || defaults.settings.quality
+    };
 
-  const environmentOptions = ['Skyline', 'Tundra', 'Abyss'];
+    const countBySize = { Compact: 32, Medium: 64, Large: 100, Massive: 140 };
+    const count = countBySize[state.settings.size] || countBySize.Compact;
+    const qualityScale = { Performance: 0.7, 'High Quality': 1, Ultra: 1.25, Prototype: 0.85 }[state.settings.quality] || 1;
+    const realismScale = { Balanced: 0.8, High: 1, Cinematic: 1.15, Experimental: 1.35 }[state.settings.realism] || 1;
 
-  function clamp(value, min, max) {
-    return Math.max(min, Math.min(max, value));
+    state.runtime.agents = Math.round(count * qualityScale);
+    state.runtime.load = clamp(Math.round(18 + state.runtime.agents * 0.42 * realismScale), 10, 95);
+    state.runtime.energy = 100;
+    state.runtime.integrity = 100;
+    state.runtime.signal = state.settings.mode === 'Distributed' ? 'High' : 'Stable';
+    state.runtime.threat = state.settings.realism === 'Experimental' ? 'Elevated' : 'Low';
+    state.runtime.status = 'Simulation initialized';
+    state.runtime.elapsed = 0;
+    state.runtime.scans = 0;
+    return state;
   }
 
-  function buildStateFromOptions(nextSettings) {
-    const selectedMode = nextSettings.mode || state.settings.mode;
-    const selectedSize = nextSettings.size || state.settings.size;
-    const selectedRealism = nextSettings.realism || state.settings.realism;
-    const selectedQuality = nextSettings.quality || state.settings.quality;
+  function setEnvironment(environment) {
+    if (!['Skyline', 'Tundra', 'Abyss'].includes(environment)) return;
+    state.runtime.environment = environment;
+    state.runtime.status = `${environment} environment loaded`;
+  }
 
-    const modePreset = modeMap[selectedMode] || modeMap.Standard;
-    const qualityPreset = qualityMap[selectedQuality] || qualityMap.Performance;
+  function toggle(key) {
+    if (['boost', 'orbit', 'auto'].includes(key)) state.runtime[key] = !state.runtime[key];
+    return state.runtime[key];
+  }
 
-    const sizeFactor = {
-      Compact: 0.94,
-      Medium: 1,
-      Large: 1.08,
-      Massive: 1.18
-    }[selectedSize] || 1;
+  function scan() {
+    state.runtime.scans += 1;
+    state.runtime.status = `Scan ${state.runtime.scans} complete — ${state.runtime.agents} agents tracked`;
+  }
 
-    const realismFactor = {
-      Balanced: 1,
-      High: 1.08,
-      Cinematic: 1.16,
-      Experimental: 1.24
-    }[selectedRealism] || 1;
-
-    const runtime = {
-      fps: clamp(Math.round((qualityPreset.fps * modePreset.fps) / 160 * sizeFactor * realismFactor), 48, 220),
-      latency: clamp(Math.round((modePreset.latency + qualityPreset.latency) / 2 * (1.12 - realismFactor * 0.08)), 4, 30),
-      load: clamp(Math.round(qualityPreset.load + (selectedSize === 'Massive' ? 8 : selectedSize === 'Large' ? 4 : 0) + (selectedRealism === 'Experimental' ? 6 : 0)), 35, 95),
-      energy: clamp(Math.round(qualityPreset.energy + (selectedMode === 'Distributed' ? 7 : selectedMode === 'Ultra Render' ? 5 : 0) - (selectedRealism === 'Experimental' ? 6 : 0)), 50, 99),
-      integrity: clamp(Math.round(94 + (selectedQuality === 'Ultra' ? 3 : selectedQuality === 'Prototype' ? 1 : 0) - (selectedMode === 'Distributed' ? 1 : 0)), 70, 99),
-      signal: selectedMode === 'Distributed' ? 'High' : selectedMode === 'GPU Accelerated' ? 'Optimal' : 'Stable',
-      threat: selectedRealism === 'Experimental' ? 'Elevated' : selectedMode === 'Distributed' ? 'Moderate' : 'Low',
-      environment: environmentOptions[Math.abs((selectedMode.length + selectedSize.length + selectedRealism.length + selectedQuality.length) % environmentOptions.length)],
-      deck: 'Lab Delta',
-      status: `${selectedMode} profile online`
-    };
-
-    state.settings = {
-      mode: selectedMode,
-      size: selectedSize,
-      realism: selectedRealism,
-      quality: selectedQuality
-    };
-
-    state.runtime = runtime;
-    return { ...state };
+  function updateTelemetry({ fps, latency, load, energy, integrity, elapsed }) {
+    Object.assign(state.runtime, {
+      fps: clamp(Math.round(fps), 0, 240),
+      latency: clamp(Number(latency.toFixed(2)), 0, 1000),
+      load: clamp(Math.round(load), 0, 100),
+      energy: clamp(Math.round(energy), 0, 100),
+      integrity: clamp(Number(integrity.toFixed(1)), 0, 100),
+      elapsed: Math.max(0, elapsed)
+    });
   }
 
   function reset() {
@@ -97,10 +73,5 @@
     state.runtime = { ...defaults.runtime };
   }
 
-  window.FrameLabs3State = {
-    state,
-    defaults,
-    buildStateFromOptions,
-    reset
-  };
+  window.FrameLabs3State = { state, defaults, configure, setEnvironment, toggle, scan, updateTelemetry, reset };
 })();
