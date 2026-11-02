@@ -27,6 +27,9 @@ endif()
 add_library(framelabs_sim
   src/SimulationEngine.cpp
   src/SimulationCpu.cpp
+  src/FrameProfiler.cpp
+  src/GpuMemoryPool.cpp
+  src/World.cpp
 )
 
 target_include_directories(framelabs_sim
