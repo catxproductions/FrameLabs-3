@@ -5,11 +5,10 @@
   }
 
   function setScreen(name) {
-    const names = ['mainMenu', 'settingsScreen', 'launchSequence', 'dashboardScreen'];
     const ids = { main: 'mainMenu', settings: 'settingsScreen', launch: 'launchSequence', dashboard: 'dashboardScreen' };
-    names.forEach((id) => {
+    Object.entries(ids).forEach(([key, id]) => {
       const node = document.getElementById(id);
-      if (node) node.classList.toggle('hidden', id !== ids[name]);
+      if (node) node.classList.toggle('hidden', key !== name);
     });
     const shell = document.getElementById('appShell');
     if (shell) shell.classList.toggle('hidden', name !== 'main');
@@ -29,23 +28,25 @@
     if (button) button.disabled = true;
     if (progress) progress.style.width = '0%';
     setScreen('launch');
-
     let step = 0;
-    const messages = ['Creating scene', 'Seeding agents', 'Starting browser simulation', 'Measuring runtime', 'Ready'];
+    const messages = ['Creating structural scene', 'Seeding simulation agents', 'Starting browser runtime', 'Measuring live performance', 'Ready'];
     const tick = () => {
       step += 1;
       if (progress) progress.style.width = `${step * 20}%`;
       if (status) status.textContent = `${messages[step - 1]} · ${state.settings.size} · ${state.settings.quality}`;
-      if (step < messages.length) {
-        setTimeout(tick, 260);
+      if (step < messages.length) return setTimeout(tick, 260);
+      try {
+        const canvas = document.getElementById('simulationCanvas');
+        const sim = window.FrameLabs3Simulation.createSimulation(canvas);
+        window.FrameLabs3Simulation.instance?.stop();
+        window.FrameLabs3Simulation.instance = sim;
+        setScreen('dashboard');
+        sim.start();
+      } catch (error) {
+        if (status) status.textContent = `Unable to start: ${error.message}`;
+        if (button) button.disabled = false;
         return;
       }
-      const canvas = document.getElementById('simulationCanvas');
-      const sim = window.FrameLabs3Simulation.createSimulation(canvas);
-      window.FrameLabs3Simulation.instance?.stop();
-      window.FrameLabs3Simulation.instance = sim;
-      setScreen('dashboard');
-      sim.start();
       if (button) button.disabled = false;
     };
     setTimeout(tick, 150);
@@ -57,22 +58,12 @@
     document.getElementById('backToMenu')?.addEventListener('click', () => setScreen('main'));
     document.getElementById('launchSimulation')?.addEventListener('click', launch);
     document.getElementById('exitDashboard')?.addEventListener('click', () => { window.FrameLabs3Simulation.instance?.stop(); setScreen('main'); });
-
-    document.querySelectorAll('.option input').forEach((input) => {
-      input.addEventListener('change', () => {
-        document.querySelectorAll(`input[name="${input.name}"]`).forEach((radio) => radio.closest('.option')?.classList.toggle('selected', radio.checked));
-        configure();
-      });
-    });
-
+    document.querySelectorAll('.option input').forEach((input) => input.addEventListener('change', () => {
+      document.querySelectorAll(`input[name="${input.name}"]`).forEach((radio) => radio.closest('.option')?.classList.toggle('selected', radio.checked));
+      configure();
+    }));
     document.querySelectorAll('.launch-demo-button').forEach((button) => button.addEventListener('click', () => { configure(); setScreen('settings'); }));
     document.querySelectorAll('.showcase-button').forEach((button) => button.addEventListener('click', () => document.getElementById('experience')?.scrollIntoView({ behavior: 'smooth' })));
-
-    document.querySelectorAll('.env-item').forEach((item) => item.addEventListener('click', () => {
-      window.FrameLabs3State.setEnvironment(item.dataset.environment);
-      window.FrameLabs3UI.renderDashboard();
-    }));
-
     document.querySelectorAll('[data-action]').forEach((button) => button.addEventListener('click', () => {
       const action = button.dataset.action;
       if (action === 'scan') window.FrameLabs3State.scan();
@@ -80,18 +71,7 @@
       else window.FrameLabs3State.toggle(action);
       window.FrameLabs3UI.renderDashboard();
     }));
-
-    document.getElementById('shuffleEnvironment')?.addEventListener('click', () => {
-      const options = ['Skyline', 'Tundra', 'Abyss'].filter((item) => item !== window.FrameLabs3State.state.runtime.environment);
-      window.FrameLabs3State.setEnvironment(options[Math.floor(Math.random() * options.length)]);
-      window.FrameLabs3UI.renderDashboard();
-    });
-
-    document.getElementById('toggleAuto')?.addEventListener('click', () => {
-      window.FrameLabs3State.toggle('auto');
-      window.FrameLabs3UI.renderDashboard();
-    });
-
+    document.getElementById('toggleAuto')?.addEventListener('click', () => { window.FrameLabs3State.toggle('auto'); window.FrameLabs3UI.renderDashboard(); });
     window.addEventListener('resize', () => window.FrameLabs3Simulation.instance?.resize());
   }
 
@@ -100,9 +80,7 @@
     if ('IntersectionObserver' in window) {
       const observer = new IntersectionObserver((entries) => entries.forEach((entry) => entry.isIntersecting && entry.target.classList.add('visible')), { threshold: 0.15 });
       revealElements.forEach((element) => observer.observe(element));
-    } else {
-      revealElements.forEach((element) => element.classList.add('visible'));
-    }
+    } else revealElements.forEach((element) => element.classList.add('visible'));
     bind();
     configure();
     setScreen('main');

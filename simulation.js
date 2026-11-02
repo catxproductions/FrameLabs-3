@@ -3,7 +3,9 @@
   const counts = { Compact: 32, Medium: 64, Large: 100, Massive: 140 };
 
   function createSimulation(canvas) {
+    if (!canvas || typeof canvas.getContext !== 'function') throw new Error('Simulation canvas is missing.');
     const context = canvas.getContext('2d');
+    if (!context) throw new Error('This browser does not support the 2D canvas renderer.');
     const agents = [];
     let running = false;
     let frameId = null;
@@ -11,7 +13,7 @@
     let metricWindow = 0;
     let frameCount = 0;
     let elapsed = 0;
-    let focus = false;
+    let focused = false;
 
     function resize() {
       const rect = canvas.getBoundingClientRect();
@@ -41,38 +43,36 @@
     }
 
     function draw(width, height) {
-      const state = window.FrameLabs3State.state;
-      const runtime = state.runtime;
-      const base = runtime.environment === 'Tundra' ? '#172a3d' : runtime.environment === 'Abyss' ? '#091a2c' : '#141d3b';
+      const runtime = window.FrameLabs3State.state.runtime;
       context.clearRect(0, 0, width, height);
-      context.fillStyle = base;
+      context.fillStyle = '#141d3b';
       context.fillRect(0, 0, width, height);
-
       const glow = context.createRadialGradient(width * 0.5, height * 0.5, 2, width * 0.5, height * 0.5, Math.max(width, height) * 0.7);
       glow.addColorStop(0, 'rgba(77, 134, 255, 0.22)');
       glow.addColorStop(1, 'rgba(3, 8, 20, 0.08)');
       context.fillStyle = glow;
       context.fillRect(0, 0, width, height);
 
-      context.strokeStyle = 'rgba(175, 206, 255, 0.08)';
+      // A single, fixed construction-site ground plane; weather/environment presets are intentionally absent.
+      context.strokeStyle = 'rgba(175, 206, 255, 0.11)';
       context.lineWidth = 1;
-      for (let y = height * 0.58; y < height; y += 18) {
+      const horizon = height * 0.56;
+      for (let y = horizon; y < height; y += 18) {
         context.beginPath(); context.moveTo(0, y); context.lineTo(width, y); context.stroke();
       }
+      for (let x = width * 0.08; x < width; x += 32) {
+        context.beginPath(); context.moveTo(width * 0.5, horizon); context.lineTo(x, height); context.stroke();
+      }
 
-      const centerX = focus ? width * 0.5 : width * (0.5 + Math.sin(elapsed * 0.17) * 0.025);
-      const centerY = height * 0.48;
-      context.strokeStyle = 'rgba(130, 176, 255, 0.18)';
+      const centerX = focused ? width * 0.5 : width * (0.5 + Math.sin(elapsed * 0.17) * 0.025);
+      const centerY = height * 0.47;
+      context.strokeStyle = 'rgba(130, 176, 255, 0.24)';
       context.beginPath(); context.ellipse(centerX, centerY, Math.min(width, height) * 0.34, Math.min(width, height) * 0.2, 0, 0, Math.PI * 2); context.stroke();
 
       for (const agent of agents) {
-        const x = agent.x * width;
-        const y = agent.y * height;
-        const glowColor = runtime.environment === 'Tundra' ? '170, 221, 255' : runtime.environment === 'Abyss' ? '105, 224, 209' : '124, 156, 255';
-        context.fillStyle = `rgba(${glowColor}, ${0.48 + 0.42 * Math.sin(agent.phase)})`;
-        context.beginPath(); context.arc(x, y, agent.size, 0, Math.PI * 2); context.fill();
+        context.fillStyle = `rgba(124, 190, 255, ${0.48 + 0.42 * Math.sin(agent.phase)})`;
+        context.beginPath(); context.arc(agent.x * width, agent.y * height, agent.size, 0, Math.PI * 2); context.fill();
       }
-
       if (runtime.scans > 0) {
         const scanPhase = (elapsed * 0.55) % 1;
         context.strokeStyle = `rgba(92, 231, 212, ${0.45 * (1 - scanPhase)})`;
@@ -89,68 +89,44 @@
       elapsed += dt;
       metricWindow += dt;
       frameCount += 1;
-
       const runtime = window.FrameLabs3State.state.runtime;
       const acceleration = runtime.boost ? 0.19 : 0.1;
-      const center = 0.5;
       for (const agent of agents) {
         agent.phase += dt * (runtime.boost ? 2.4 : 1.2);
         if (runtime.orbit) {
-          const dx = center - agent.x;
-          const dy = center - agent.y;
+          const dx = 0.5 - agent.x;
+          const dy = 0.5 - agent.y;
           agent.vx += (-dy * acceleration - dx * 0.025) * dt;
           agent.vy += (dx * acceleration - dy * 0.025) * dt;
         }
-        agent.vx += (Math.sin(agent.phase * 0.7) * 0.006) * dt;
-        agent.vy += (Math.cos(agent.phase * 0.8) * 0.006) * dt;
-        agent.x += agent.vx * dt;
-        agent.y += agent.vy * dt;
-        if (agent.x < 0.04 || agent.x > 0.96) agent.vx *= -1;
-        if (agent.y < 0.08 || agent.y > 0.92) agent.vy *= -1;
-        agent.x = clamp(agent.x, 0.04, 0.96);
-        agent.y = clamp(agent.y, 0.08, 0.92);
+        agent.vx += Math.sin(agent.phase * 0.7) * 0.006 * dt;
+        agent.vy += Math.cos(agent.phase * 0.8) * 0.006 * dt;
+        agent.x = clamp(agent.x + agent.vx * dt, 0.04, 0.96);
+        agent.y = clamp(agent.y + agent.vy * dt, 0.08, 0.92);
+        if (agent.x <= 0.04 || agent.x >= 0.96) agent.vx *= -1;
+        if (agent.y <= 0.08 || agent.y >= 0.92) agent.vy *= -1;
       }
 
       const rect = canvas.getBoundingClientRect();
       draw(rect.width, rect.height);
-
       if (metricWindow >= 0.5) {
         const measuredFps = frameCount / metricWindow;
         const computeMs = performance.now() - start;
         const workLoad = clamp(12 + agents.length * 0.35 + (runtime.boost ? 8 : 0) + (runtime.orbit ? 6 : 0), 0, 100);
         const energy = clamp(runtime.energy - (runtime.boost ? 0.25 : 0.08) * metricWindow, 0, 100);
-        window.FrameLabs3State.updateTelemetry({
-          fps: measuredFps,
-          latency: computeMs,
-          load: workLoad,
-          energy,
-          integrity: Math.max(90, 100 - elapsed * 0.01),
-          elapsed
-        });
+        window.FrameLabs3State.updateTelemetry({ fps: measuredFps, latency: computeMs, load: workLoad, energy, integrity: Math.max(90, 100 - elapsed * 0.01), elapsed });
         window.FrameLabs3UI.renderDashboard();
         metricWindow = 0;
         frameCount = 0;
       }
-
       frameId = requestAnimationFrame(step);
     }
 
     return {
-      start() {
-        if (running) return;
-        running = true;
-        previous = 0;
-        resize();
-        seedAgents();
-        frameId = requestAnimationFrame(step);
-      },
-      stop() {
-        running = false;
-        if (frameId !== null) cancelAnimationFrame(frameId);
-        frameId = null;
-      },
+      start() { if (running) return; running = true; previous = 0; resize(); seedAgents(); frameId = requestAnimationFrame(step); },
+      stop() { running = false; if (frameId !== null) cancelAnimationFrame(frameId); frameId = null; },
       resize,
-      focus() { focus = !focus; }
+      focus() { focused = !focused; }
     };
   }
 
