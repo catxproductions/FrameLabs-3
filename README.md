@@ -1,7 +1,5 @@
 # FrameLabs 3
 
-FrameLabs 3 is an independent, browser-based structural design and simulation workspace. It uses one fixed structural construction environment; users do not switch between unrelated environment presets. The interactive canvas runs a lightweight 2D agent-motion simulation locally in the browser and does not depend on FrameLabs 2.
+FrameLabs 3 is an independent browser-based structural sandbox. It now displays a triangulated frame with pinned supports, editable joints and members, downward joint loads, and a live stress-color map based on a simplified 2D axial spring solver.
 
-## Use
-
-Open `index.html` in a modern browser or visit the GitHub Pages site. No setup commands are required for users. The optional Vite workflow is only for contributors. Browser runtime metrics describe this app's local canvas loop and are not hardware-performance benchmarks.
+Use the workspace tools to add joints, connect members, apply loads, pause/resume, recalculate the stress map, and restore the starter frame. The model is for interactive exploration only; it is not validated engineering software and must not be used for real structural safety decisions. It runs in a modern browser without user setup commands.
