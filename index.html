@@ -165,176 +165,317 @@
       </div>
     </div>
 
-    <header class="topbar">
-      <nav class="nav container">
-        <div class="brand">
-          <div class="brand-mark">F</div>
-          <span>FrameLabs 3</span>
+    <div class="launch-sequence hidden" id="launchSequence">
+      <div class="launch-scanlines"></div>
+      <div class="launch-card reveal">
+        <p class="menu-tag">System Boot</p>
+        <h2>Launching simulation</h2>
+        <div class="status-stack">
+          <div class="status-line"><span>Initializing scene graph</span><strong>OK</strong></div>
+          <div class="status-line"><span>Compiling render pipeline</span><strong>OK</strong></div>
+          <div class="status-line"><span>Loading environment layer</span><strong>OK</strong></div>
+          <div class="status-line"><span>Syncing agent behavior</span><strong>READY</strong></div>
         </div>
-        <div class="nav-links">
-          <a href="#features">Features</a>
-          <a href="#experience">Experience</a>
-          <a href="#workflow">Workflow</a>
-          <a href="#contact">Contact</a>
+        <div class="progress-wrap">
+          <div class="progress-bar"><span id="launchProgress"></span></div>
+          <small id="launchStatus">Preparing environment...</small>
         </div>
-        <button class="nav-button">Launch Demo</button>
-      </nav>
-    </header>
+      </div>
+    </div>
 
-    <main>
-      <section class="hero container">
-        <div class="hero-copy reveal">
-          <span class="eyebrow">Redesigned for speed and clarity</span>
-          <h1>
-            A smoother,
-            <span class="gradient-text">more cinematic</span>
-            creative platform.
-          </h1>
-          <p>
-            FrameLabs 3 brings together fluid motion, premium visual design, and
-            faster decision-making to help teams create immersive experiences with
-            less friction.
-          </p>
-
-          <div class="hero-actions">
-            <button class="primary">Get Started</button>
-            <button class="secondary">View Showcase</button>
-          </div>
-
-          <div class="hero-metrics">
-            <div>
-              <strong>2.4x</strong>
-              <span>faster iteration</span>
-            </div>
-            <div>
-              <strong>99.9%</strong>
-              <span>visual consistency</span>
-            </div>
-            <div>
-              <strong>24/7</strong>
-              <span>creative flow</span>
-            </div>
+    <div class="dashboard hidden" id="dashboardScreen">
+      <header class="dashboard-header">
+        <div class="dashboard-brand">
+          <div class="brand-mark small">F</div>
+          <div>
+            <p class="hud-label">FrameLabs 3</p>
+            <h3>Simulation Console</h3>
           </div>
         </div>
 
-        <div class="hero-visual reveal">
-          <div class="visual-card main-card">
-            <div class="mini-header">
-              <span class="dot dot-red"></span>
-              <span class="dot dot-yellow"></span>
-              <span class="dot dot-green"></span>
-            </div>
+        <div class="hud-metrics">
+          <div><span>Latency</span><strong>12ms</strong></div>
+          <div><span>FPS</span><strong>144</strong></div>
+          <div><span>Load</span><strong>72%</strong></div>
+        </div>
+      </header>
 
-            <div class="screen-panel">
-              <div class="panel-glow"></div>
-              <div class="panel-grid"></div>
-              <div class="scene-scape">
-                <div class="floating-orb orb-one"></div>
-                <div class="floating-orb orb-two"></div>
-                <div class="floating-card card-a">
-                  <span>Realtime</span>
-                  <strong>Motion</strong>
-                </div>
-                <div class="floating-card card-b">
-                  <span>Design</span>
-                  <strong>Systems</strong>
-                </div>
+      <main class="dashboard-grid">
+        <aside class="dashboard-sidebar">
+          <div class="panel panel-glass">
+            <p class="hud-label">Session</p>
+            <h4>Lab Delta</h4>
+            <ul class="sidebar-list">
+              <li class="active">Environment</li>
+              <li>Agents</li>
+              <li>Render</li>
+              <li>Analytics</li>
+            </ul>
+          </div>
+
+          <div class="panel panel-glass compact">
+            <p class="hud-label">Character</p>
+            <div class="avatar-card">
+              <div class="avatar-portrait"></div>
+              <div>
+                <strong>Nova Voss</strong>
+                <small>Adaptive pilot</small>
               </div>
             </div>
           </div>
-        </div>
-      </section>
+        </aside>
 
-      <section id="features" class="features container reveal">
-        <div class="section-heading">
-          <span class="eyebrow">Why FrameLabs 3</span>
-          <h2>Built to feel premium from the first interaction.</h2>
-        </div>
+        <section class="dashboard-main">
+          <div class="panel hero-panel">
+            <div class="hero-panel-copy">
+              <p class="hud-label">Environment</p>
+              <h2>Skyline Nexus</h2>
+              <p>High-density simulation layer with adaptive weather control and live scene reconstruction.</p>
+            </div>
+            <div class="world-preview"></div>
+          </div>
 
-        <div class="feature-grid">
-          <article class="feature-card">
-            <div class="icon">✦</div>
-            <h3>Fluid UX</h3>
-            <p>Intuitive motion patterns and polished transitions that reduce friction.</p>
-          </article>
-          <article class="feature-card">
-            <div class="icon">◌</div>
-            <h3>Sharper Focus</h3>
-            <p>Clear visual hierarchy keeps what matters in view and creates calm clarity.</p>
-          </article>
-          <article class="feature-card">
-            <div class="icon">◎</div>
-            <h3>Creative Power</h3>
-            <p>Tools designed for experimentation, iteration, and rapid concept validation.</p>
-          </article>
-        </div>
-      </section>
-
-      <section id="experience" class="experience container">
-        <div class="experience-copy reveal">
-          <span class="eyebrow">The experience layer</span>
-          <h2>Design that feels as good as it looks.</h2>
-          <p>
-            Every surface, shadow, and motion cue is tuned to feel modern and responsive.
-            FrameLabs 3 is built around clarity, comfort, and a premium visual rhythm.
-          </p>
-        </div>
-
-        <div class="experience-stack reveal">
-          <div class="stack-card large">
-            <span class="tag">Prototyping</span>
-            <h3>Interactive product motion</h3>
-            <div class="bars">
-              <span></span>
-              <span></span>
-              <span></span>
-              <span></span>
+          <div class="stats-row">
+            <div class="panel panel-metric">
+              <span>Energy</span>
+              <strong>84%</strong>
+            </div>
+            <div class="panel panel-metric">
+              <span>Integrity</span>
+              <strong>96.4%</strong>
+            </div>
+            <div class="panel panel-metric">
+              <span>Signal</span>
+              <strong>Stable</strong>
+            </div>
+            <div class="panel panel-metric">
+              <span>Threat</span>
+              <strong>Low</strong>
             </div>
           </div>
-          <div class="stack-card small">
-            <span class="tag">Systems</span>
-            <h3>Unified visual language</h3>
-          </div>
-        </div>
-      </section>
 
-      <section id="workflow" class="workflow container reveal">
-        <div class="section-heading center">
-          <span class="eyebrow">Workflow</span>
-          <h2>From idea to polished execution.</h2>
-        </div>
+          <div class="lower-grid">
+            <div class="panel lower-card">
+              <div class="card-head">
+                <p class="hud-label">Environment Select</p>
+                <button class="mini-button">Shuffle</button>
+              </div>
+              <div class="environment-list">
+                <div class="env-item active">Skyline</div>
+                <div class="env-item">Tundra</div>
+                <div class="env-item">Abyss</div>
+              </div>
+            </div>
 
-        <div class="workflow-steps">
-          <div class="step">
-            <span>01</span>
-            <h3>Discover</h3>
-            <p>Capture creative intent and establish the visual direction.</p>
+            <div class="panel lower-card">
+              <div class="card-head">
+                <p class="hud-label">Controls</p>
+                <button class="mini-button">Auto</button>
+              </div>
+              <div class="control-grid">
+                <button>Boost</button>
+                <button>Orbit</button>
+                <button>Focus</button>
+                <button>Scan</button>
+              </div>
+            </div>
           </div>
-          <div class="step">
-            <span>02</span>
-            <h3>Design</h3>
-            <p>Build elegant systems, surfaces, and interaction states.</p>
-          </div>
-          <div class="step">
-            <span>03</span>
-            <h3>Refine</h3>
-            <p>Iterate quickly with clear feedback and a smooth creative flow.</p>
-          </div>
-        </div>
-      </section>
-    </main>
+        </section>
 
-    <footer id="contact" class="footer">
-      <div class="container footer-inner">
-        <div>
+        <aside class="dashboard-rightbar">
+          <div class="panel panel-glass">
+            <p class="hud-label">Live telemetry</p>
+            <div class="telemetry">
+              <div><span>Core</span><strong>87°</strong></div>
+              <div><span>Flow</span><strong>91%</strong></div>
+              <div><span>Motion</span><strong>3.2x</strong></div>
+            </div>
+          </div>
+
+          <div class="panel panel-glass">
+            <p class="hud-label">System status</p>
+            <div class="status-list">
+              <div class="dot-row"><span class="online-dot"></span> Render active</div>
+              <div class="dot-row"><span class="online-dot"></span> Sync complete</div>
+              <div class="dot-row"><span class="online-dot"></span> Agent loop stable</div>
+            </div>
+          </div>
+        </aside>
+      </main>
+    </div>
+
+    <div class="site-shell" id="appShell">
+      <header class="topbar">
+        <nav class="nav container">
           <div class="brand">
             <div class="brand-mark">F</div>
             <span>FrameLabs 3</span>
           </div>
+          <div class="nav-links">
+            <a href="#features">Features</a>
+            <a href="#experience">Experience</a>
+            <a href="#workflow">Workflow</a>
+            <a href="#contact">Contact</a>
+          </div>
+          <button class="nav-button">Launch Demo</button>
+        </nav>
+      </header>
+
+      <main>
+        <section class="hero container">
+          <div class="hero-copy reveal">
+            <span class="eyebrow">Redesigned for speed and clarity</span>
+            <h1>
+              A smoother,
+              <span class="gradient-text">more cinematic</span>
+              creative platform.
+            </h1>
+            <p>
+              FrameLabs 3 brings together fluid motion, premium visual design, and
+              faster decision-making to help teams create immersive experiences with
+              less friction.
+            </p>
+
+            <div class="hero-actions">
+              <button class="primary">Get Started</button>
+              <button class="secondary">View Showcase</button>
+            </div>
+
+            <div class="hero-metrics">
+              <div>
+                <strong>2.4x</strong>
+                <span>faster iteration</span>
+              </div>
+              <div>
+                <strong>99.9%</strong>
+                <span>visual consistency</span>
+              </div>
+              <div>
+                <strong>24/7</strong>
+                <span>creative flow</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="hero-visual reveal">
+            <div class="visual-card main-card">
+              <div class="mini-header">
+                <span class="dot dot-red"></span>
+                <span class="dot dot-yellow"></span>
+                <span class="dot dot-green"></span>
+              </div>
+
+              <div class="screen-panel">
+                <div class="panel-glow"></div>
+                <div class="panel-grid"></div>
+                <div class="scene-scape">
+                  <div class="floating-orb orb-one"></div>
+                  <div class="floating-orb orb-two"></div>
+                  <div class="floating-card card-a">
+                    <span>Realtime</span>
+                    <strong>Motion</strong>
+                  </div>
+                  <div class="floating-card card-b">
+                    <span>Design</span>
+                    <strong>Systems</strong>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="features" class="features container reveal">
+          <div class="section-heading">
+            <span class="eyebrow">Why FrameLabs 3</span>
+            <h2>Built to feel premium from the first interaction.</h2>
+          </div>
+
+          <div class="feature-grid">
+            <article class="feature-card">
+              <div class="icon">✦</div>
+              <h3>Fluid UX</h3>
+              <p>Intuitive motion patterns and polished transitions that reduce friction.</p>
+            </article>
+            <article class="feature-card">
+              <div class="icon">◌</div>
+              <h3>Sharper Focus</h3>
+              <p>Clear visual hierarchy keeps what matters in view and creates calm clarity.</p>
+            </article>
+            <article class="feature-card">
+              <div class="icon">◎</div>
+              <h3>Creative Power</h3>
+              <p>Tools designed for experimentation, iteration, and rapid concept validation.</p>
+            </article>
+          </div>
+        </section>
+
+        <section id="experience" class="experience container">
+          <div class="experience-copy reveal">
+            <span class="eyebrow">The experience layer</span>
+            <h2>Design that feels as good as it looks.</h2>
+            <p>
+              Every surface, shadow, and motion cue is tuned to feel modern and responsive.
+              FrameLabs 3 is built around clarity, comfort, and a premium visual rhythm.
+            </p>
+          </div>
+
+          <div class="experience-stack reveal">
+            <div class="stack-card large">
+              <span class="tag">Prototyping</span>
+              <h3>Interactive product motion</h3>
+              <div class="bars">
+                <span></span>
+                <span></span>
+                <span></span>
+                <span></span>
+              </div>
+            </div>
+            <div class="stack-card small">
+              <span class="tag">Systems</span>
+              <h3>Unified visual language</h3>
+            </div>
+          </div>
+        </section>
+
+        <section id="workflow" class="workflow container reveal">
+          <div class="section-heading center">
+            <span class="eyebrow">Workflow</span>
+            <h2>From idea to polished execution.</h2>
+          </div>
+
+          <div class="workflow-steps">
+            <div class="step">
+              <span>01</span>
+              <h3>Discover</h3>
+              <p>Capture creative intent and establish the visual direction.</p>
+            </div>
+            <div class="step">
+              <span>02</span>
+              <h3>Design</h3>
+              <p>Build elegant systems, surfaces, and interaction states.</p>
+            </div>
+            <div class="step">
+              <span>03</span>
+              <h3>Refine</h3>
+              <p>Iterate quickly with clear feedback and a smooth creative flow.</p>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <footer id="contact" class="footer">
+        <div class="container footer-inner">
+          <div>
+            <div class="brand">
+              <div class="brand-mark">F</div>
+              <span>FrameLabs 3</span>
+            </div>
+          </div>
+          <button class="primary">Start Building</button>
         </div>
-        <button class="primary">Start Building</button>
-      </div>
-    </footer>
+      </footer>
+    </div>
 
     <script src="./app.js"></script>
   </body>
