@@ -15,7 +15,7 @@
     };
 
     if (metricEls.latency) metricEls.latency.textContent = `${runtime.latency}ms`;
-    if (metricEls.fps) metricEls.fps.textContent = runtime.fps;
+    if (metricEls.fps) metricEls.fps.textContent = String(runtime.fps);
     if (metricEls.load) metricEls.load.textContent = `${runtime.load}%`;
 
     const envHeader = document.querySelector('#dashboardScreen .hero-panel-copy h2');
@@ -62,12 +62,13 @@
       dashboard: document.getElementById('dashboardScreen')
     };
 
-    const appShell = document.getElementById('appShell');
     Object.keys(screens).forEach((key) => {
-      if (!screens[key]) return;
-      screens[key].classList.toggle('hidden', key !== name);
+      const node = screens[key];
+      if (!node) return;
+      node.classList.toggle('hidden', key !== name);
     });
 
+    const appShell = document.getElementById('appShell');
     if (appShell) {
       appShell.classList.toggle('hidden', name !== 'main');
     }

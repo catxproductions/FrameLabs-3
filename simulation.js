@@ -63,6 +63,10 @@
         runtime.load = clamp(Math.round((runtime.load || 72) + Math.sin(this.pulse * 0.9) * 5 + (state.settings.size === 'Massive' ? 2 : 0)), 35, 95);
         runtime.fps = clamp(Math.round(runtime.fps + drift * 0.5), 48, 220);
         runtime.latency = clamp(Math.round(runtime.latency + Math.cos(this.pulse * 1.1) * 0.7 + (state.settings.quality === 'Ultra' ? 0.5 : 0)), 4, 30);
+        runtime.signal = state.settings.mode === 'Distributed' ? 'High' : state.settings.mode === 'GPU Accelerated' ? 'Optimal' : 'Stable';
+        runtime.threat = state.settings.realism === 'Experimental' ? 'Elevated' : state.settings.mode === 'Distributed' ? 'Moderate' : 'Low';
+        runtime.environment = state.runtime.environment || 'Skyline';
+        runtime.status = `${state.settings.mode} profile online`;
 
         if (window.FrameLabs3UI && typeof window.FrameLabs3UI.renderDashboard === 'function') {
           window.FrameLabs3UI.renderDashboard();

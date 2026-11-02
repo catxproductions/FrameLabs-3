@@ -64,22 +64,22 @@
           <section class="settings-group">
             <h3>Computing mode</h3>
             <label class="option selected">
-              <input type="radio" name="mode" checked />
+              <input type="radio" name="mode" value="Standard" checked />
               <span>Standard</span>
               <small>Balanced for daily use</small>
             </label>
             <label class="option">
-              <input type="radio" name="mode" />
+              <input type="radio" name="mode" value="GPU Accelerated" />
               <span>GPU Accelerated</span>
               <small>Fast preview + richer shaders</small>
             </label>
             <label class="option">
-              <input type="radio" name="mode" />
+              <input type="radio" name="mode" value="Ultra Render" />
               <span>Ultra Render</span>
               <small>Maximum fidelity</small>
             </label>
             <label class="option">
-              <input type="radio" name="mode" />
+              <input type="radio" name="mode" value="Distributed" />
               <span>Distributed</span>
               <small>Multi-node large simulations</small>
             </label>
@@ -88,22 +88,22 @@
           <section class="settings-group">
             <h3>Simulation size</h3>
             <label class="option selected">
-              <input type="radio" name="size" checked />
+              <input type="radio" name="size" value="Compact" checked />
               <span>Compact</span>
               <small>Small environment / quick test</small>
             </label>
             <label class="option">
-              <input type="radio" name="size" />
+              <input type="radio" name="size" value="Medium" />
               <span>Medium</span>
               <small>Balanced scene detail</small>
             </label>
             <label class="option">
-              <input type="radio" name="size" />
+              <input type="radio" name="size" value="Large" />
               <span>Large</span>
               <small>Expanded world + richer data</small>
             </label>
             <label class="option">
-              <input type="radio" name="size" />
+              <input type="radio" name="size" value="Massive" />
               <span>Massive</span>
               <small>High-complexity production run</small>
             </label>
@@ -112,22 +112,22 @@
           <section class="settings-group">
             <h3>Realism</h3>
             <label class="option selected">
-              <input type="radio" name="realism" checked />
+              <input type="radio" name="realism" value="Balanced" checked />
               <span>Balanced</span>
               <small>Natural response and clean visuals</small>
             </label>
             <label class="option">
-              <input type="radio" name="realism" />
+              <input type="radio" name="realism" value="High" />
               <span>High</span>
               <small>More detailed motion and lighting</small>
             </label>
             <label class="option">
-              <input type="radio" name="realism" />
+              <input type="radio" name="realism" value="Cinematic" />
               <span>Cinematic</span>
               <small>Premium motion and filmic polish</small>
             </label>
             <label class="option">
-              <input type="radio" name="realism" />
+              <input type="radio" name="realism" value="Experimental" />
               <span>Experimental</span>
               <small>Art-driven nonstandard behavior</small>
             </label>
@@ -136,22 +136,22 @@
           <section class="settings-group">
             <h3>Graphics preset</h3>
             <label class="option selected">
-              <input type="radio" name="quality" checked />
+              <input type="radio" name="quality" value="Performance" checked />
               <span>Performance</span>
               <small>Fastest stable output</small>
             </label>
             <label class="option">
-              <input type="radio" name="quality" />
+              <input type="radio" name="quality" value="High Quality" />
               <span>High Quality</span>
               <small>Better shadows and materials</small>
             </label>
             <label class="option">
-              <input type="radio" name="quality" />
+              <input type="radio" name="quality" value="Ultra" />
               <span>Ultra</span>
               <small>Maximum visual fidelity</small>
             </label>
             <label class="option">
-              <input type="radio" name="quality" />
+              <input type="radio" name="quality" value="Prototype" />
               <span>Prototype</span>
               <small>Creative exploration mode</small>
             </label>
@@ -317,7 +317,7 @@
             <a href="#workflow">Workflow</a>
             <a href="#contact">Contact</a>
           </div>
-          <button class="nav-button">Launch Demo</button>
+          <button class="nav-button launch-demo-button">Launch Demo</button>
         </nav>
       </header>
 
@@ -337,8 +337,8 @@
             </p>
 
             <div class="hero-actions">
-              <button class="primary">Get Started</button>
-              <button class="secondary">View Showcase</button>
+              <button class="primary launch-demo-button">Get Started</button>
+              <button class="secondary showcase-button">View Showcase</button>
             </div>
 
             <div class="hero-metrics">
@@ -472,11 +472,14 @@
               <span>FrameLabs 3</span>
             </div>
           </div>
-          <button class="primary">Start Building</button>
+          <button class="primary launch-demo-button">Start Building</button>
         </div>
       </footer>
     </div>
 
+    <script src="./state.js"></script>
+    <script src="./ui.js"></script>
+    <script src="./simulation.js"></script>
     <script src="./app.js"></script>
   </body>
 </html>
