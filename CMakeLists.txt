@@ -42,4 +42,19 @@ set_target_properties(FrameLabs3 PROPERTIES
   RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_BINARY_DIR}/bin"
   RUNTIME_OUTPUT_DIRECTORY_DEBUG "${CMAKE_BINARY_DIR}/bin"
 )
+include(CTest)
+if(BUILD_TESTING)
+  add_executable(FrameLabs3PhysicsTests
+    tests/structural_world_tests.cpp
+    native/src/StructuralWorld.cpp
+  )
+  target_include_directories(FrameLabs3PhysicsTests PRIVATE native/include)
+  if(MSVC)
+    target_compile_options(FrameLabs3PhysicsTests PRIVATE /W4 /permissive- /utf-8 /EHsc)
+  else()
+    target_compile_options(FrameLabs3PhysicsTests PRIVATE -Wall -Wextra -Wpedantic)
+  endif()
+  add_test(NAME FrameLabs3PhysicsTests COMMAND FrameLabs3PhysicsTests)
+endif()
+
 message(STATUS "FrameLabs 3: native 2D structural physics / static Windows executable")

@@ -130,8 +130,22 @@
   });
 
   document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape" && currentScreen === "workspace") showScreen("menu");
-    if (event.key === "Escape" && currentScreen === "settings") showScreen(returnScreen);
+    if (event.key === "Escape" && currentScreen === "workspace") {
+      showScreen("menu");
+      return;
+    }
+    if (event.key === "Escape" && currentScreen === "settings") {
+      showScreen(returnScreen);
+      return;
+    }
+    if (currentScreen !== "workspace" || event.altKey || event.ctrlKey || event.metaKey) return;
+    const target = event.target;
+    if (target && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName))) return;
+    const shortcutTools = { v: "Select", g: "Move", p: "Place", i: "Inspect" };
+    const toolName = shortcutTools[event.key.toLowerCase()];
+    if (!toolName) return;
+    const button = document.querySelector('[data-tool="' + toolName + '"]');
+    if (button) button.click();
   });
 
   // UI-only prototype: no physics, rendering backend, simulation, or hardware control.

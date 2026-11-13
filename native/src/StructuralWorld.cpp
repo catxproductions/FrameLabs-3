@@ -10,7 +10,7 @@ namespace {
 constexpr float Pi = 3.14159265358979323846f;
 constexpr float Gravity = 9.81f;
 constexpr float GroundY = 0.0f;
-constexpr int SolverIterations = 9;
+constexpr int SolverIterations = 16;
 constexpr int MemberSubdivisions = 5;
 
 float clampf(float v, float lo, float hi) { return std::max(lo, std::min(v, hi)); }
@@ -20,6 +20,12 @@ Vec2 sub(Vec2 a, Vec2 b) { return {a.x - b.x, a.y - b.y}; }
 Vec2 mul(Vec2 a, float s) { return {a.x * s, a.y * s}; }
 float dot(Vec2 a, Vec2 b) { return a.x * b.x + a.y * b.y; }
 float distance(Vec2 a, Vec2 b) { return length(sub(a,b)); }
+float distanceToSegment(Vec2 point, Vec2 a, Vec2 b) {
+    const Vec2 ab = sub(b, a);
+    const float denominator = dot(ab, ab);
+    const float t = denominator > 1e-8f ? clampf(dot(sub(point, a), ab) / denominator, 0.0f, 1.0f) : 0.0f;
+    return distance(point, add(a, mul(ab, t)));
+}
 float angleOf(Vec2 v) { return std::atan2(v.y, v.x); }
 float wrapAngle(float a) { while(a > Pi) a -= 2*Pi; while(a < -Pi) a += 2*Pi; return a; }
 
@@ -52,6 +58,32 @@ struct MemberData {
 };
 struct NodeData { NodeId id=0; std::size_t particle=0; };
 struct LoadData { LoadView view{}; Vec2 velocity{}; };
+
+void resolveLoadSegmentContact(LoadData& load, Particle& a, Particle& b, float loadInverseMass) {
+    const Vec2 ab = sub(b.p, a.p);
+    const float denominator = dot(ab, ab);
+    const float t = denominator > 1e-8f
+        ? clampf(dot(sub(load.view.position, a.p), ab) / denominator, 0.0f, 1.0f)
+        : 0.0f;
+    const Vec2 closest = add(a.p, mul(ab, t));
+    const Vec2 delta = sub(closest, load.view.position);
+    const float d = length(delta);
+    const float memberRadius = std::max(0.07f, std::max(a.radius, b.radius));
+    const float minimumDistance = load.view.radius + memberRadius;
+    if (d >= minimumDistance) return;
+
+    const Vec2 normal = d > 1e-5f ? mul(delta, 1.0f / d) : Vec2{0.0f, 1.0f};
+    const float oneMinusT = 1.0f - t;
+    const float effectiveMemberInverseMass =
+        a.inverseMass * oneMinusT * oneMinusT + b.inverseMass * t * t;
+    const float totalInverseMass = effectiveMemberInverseMass + loadInverseMass;
+    if (totalInverseMass <= 1e-8f) return;
+
+    const float penetration = minimumDistance - d;
+    a.p = add(a.p, mul(normal, penetration * a.inverseMass * oneMinusT / totalInverseMass));
+    b.p = add(b.p, mul(normal, penetration * b.inverseMass * t / totalInverseMass));
+    load.view.position = sub(load.view.position, mul(normal, penetration * loadInverseMass / totalInverseMass));
+}
 }
 
 const MaterialProfile& materialProfile(MaterialKind kind) noexcept {
@@ -59,7 +91,7 @@ const MaterialProfile& materialProfile(MaterialKind kind) noexcept {
     // little, and composite is deliberately stiff/brittle. Heat reduces both
     // bending stiffness and failure thresholds.
     static const MaterialProfile profiles[] = {
-        {"steel","Steel",{120,202,255},7.8f,15.0f,9.0f,25.0f,18.0f,0.20f,0.34f,0.22f,0.72f,0.78f,4.0f},
+        {"steel","Steel",{120,202,255},7.8f,15.0f,9.0f,25.0f,18.0f,0.20f,0.75f,0.22f,0.72f,0.78f,4.0f},
         {"wood","Wood",{220,167,106},0.68f,23.0f,13.0f,7.0f,5.0f,0.055f,0.105f,0.055f,0.82f,0.92f,2.5f},
         {"composite","Composite",{178,151,230},1.25f,31.0f,18.0f,11.0f,8.0f,0.022f,0.060f,0.028f,0.90f,0.86f,3.2f},
         {"concrete","Concrete",{180,190,205},2.35f,27.0f,15.0f,14.0f,10.0f,0.012f,0.035f,0.018f,0.88f,0.90f,2.0f}
@@ -111,7 +143,13 @@ struct StructuralWorld::Impl {
             MemberView v;
             v.id=m.id; v.nodeA=m.a; v.nodeB=m.b; v.material=m.material; v.role=m.role;
             v.start=a->p; v.end=b->p; v.restLength=m.restLength;
-            v.currentLength=distance(a->p,b->p);
+            // Measure axial extension along the member's centerline. The
+            // endpoint chord shortens during bending and must not be mistaken
+            // for compressive material strain.
+            v.currentLength=0.0f;
+            for(std::size_t i=1;i<m.particles.size();++i){
+                v.currentLength+=distance(particles[m.particles[i-1]].p,particles[m.particles[i]].p);
+            }
             v.axialStrain=(v.currentLength-m.restLength)/std::max(.001f,m.restLength);
             v.stressRatio=m.stress; v.damage=m.damage; v.temperatureC=m.temperature;
             v.maxBendRadians=m.bend; v.yielding=m.stress>.72f; v.broken=m.broken;
@@ -136,7 +174,7 @@ StructuralWorld::~StructuralWorld()=default;
 void StructuralWorld::clear() {
     impl_->particles.clear(); impl_->nodes.clear(); impl_->memberData.clear(); impl_->loadData.clear();
     impl_->nodeViews.clear(); impl_->memberViews.clear(); impl_->loadViews.clear();
-    impl_->nextNode=1; impl_->nextMember=1; impl_->nextLoad=1; impl_->time=0;
+    impl_->nextNode=1; impl_->nextMember=1; impl_->nextLoad=1; impl_->time=0; impl_->wind=0;
 }
 NodeId StructuralWorld::addNode(Vec2 p,bool pinned) {
     const NodeId id=impl_->nextNode++;
@@ -212,9 +250,18 @@ bool StructuralWorld::removeLoad(std::uint32_t id) {
 void StructuralWorld::applyHeat(Vec2 p,float radius,float degreesPerSecond,float dt) {
     for(auto& m:impl_->memberData)if(!m.broken){
         auto* a=impl_->particleFor(m.a);auto* b=impl_->particleFor(m.b);if(!a||!b)continue;
-        Vec2 mid=mul(add(a->p,b->p),.5f);float d=distance(mid,p);
-        if(d<radius){float falloff=1-d/std::max(.01f,radius);m.temperature=clampf(m.temperature+degreesPerSecond*dt*falloff,20,1200);}
+        float nearestDistance=std::numeric_limits<float>::max();
+        for(std::size_t i=1;i<m.particles.size();++i){
+            const Vec2 start=impl_->particles[m.particles[i-1]].p;
+            const Vec2 end=impl_->particles[m.particles[i]].p;
+            nearestDistance=std::min(nearestDistance,distanceToSegment(p,start,end));
+        }
+        if(nearestDistance<radius){
+            const float falloff=1.0f-nearestDistance/std::max(.01f,radius);
+            m.temperature=clampf(m.temperature+degreesPerSecond*dt*falloff,20,1200);
+        }
     }
+    impl_->rebuildViews();
 }
 void StructuralWorld::setWind(float v) noexcept { impl_->wind=clampf(v,0,1); }
 
@@ -247,13 +294,16 @@ void StructuralWorld::step(float dt) {
                 const float penetration=minD-d;
                 p.p=add(p.p,mul(normal,penetration*(p.inverseMass/totalInverseMass)));
                 l.view.position=sub(l.view.position,mul(normal,penetration*(loadInverseMass/totalInverseMass)));
-                // Remove only the inward normal component so the load can settle
-                // on the member instead of tunnelling through it.
                 Vec2 relativeVelocity=sub(sub(l.view.position,l.velocity),sub(p.p,p.previous));
                 const float inward=dot(relativeVelocity,normal);
-                if(inward<0.0f){
-                    p.p=sub(p.p,mul(normal,inward*0.35f));
-                }
+                if(inward<0.0f)p.p=sub(p.p,mul(normal,inward*0.35f));
+            }
+        }
+        // Particle-only contacts leave gaps between subdivisions on long beams.
+        // Resolve the load against the continuous segment geometry as well.
+        for(auto& m:w.memberData)if(!m.broken){
+            for(std::size_t i=1;i<m.particles.size();++i){
+                resolveLoadSegmentContact(l,w.particles[m.particles[i-1]],w.particles[m.particles[i]],loadInverseMass);
             }
         }
     }
@@ -272,7 +322,7 @@ void StructuralWorld::step(float dt) {
             }
             // Second-neighbour constraints preserve each member's local curve
             // while allowing material-dependent elastic bending.
-            const float bendStiffness=clampf(profile.angularBendHertz/40.0f*(1-profile.heatSoftening*heat),.08f,.82f);
+            const float bendStiffness=clampf(profile.angularBendHertz/40.0f*3.0f*(1-profile.heatSoftening*heat),.08f,.82f);
             for(std::size_t i=1;i+1<m.particles.size();++i){
                 auto& a=w.particles[m.particles[i-1]];auto& b=w.particles[m.particles[i+1]];
                 const float rest=2.0f*m.restLength/MemberSubdivisions;
@@ -280,6 +330,16 @@ void StructuralWorld::step(float dt) {
                 float wa=a.inverseMass,wb=b.inverseMass,sum=wa+wb;if(sum<=0)continue;
                 Vec2 correction=mul(d,((len-rest)/len)*bendStiffness);
                 a.p=add(a.p,mul(correction,wa/sum));b.p=sub(b.p,mul(correction,wb/sum));
+            }
+        }
+    }
+    // Re-apply continuous contacts after structural constraints so the load
+    // cannot be pushed back through a member by the solver in the same step.
+    for(auto& l:w.loadData){
+        const float loadInverseMass=1.0f/std::max(0.1f,l.view.massKg/1000.0f);
+        for(auto& m:w.memberData)if(!m.broken){
+            for(std::size_t i=1;i<m.particles.size();++i){
+                resolveLoadSegmentContact(l,w.particles[m.particles[i-1]],w.particles[m.particles[i]],loadInverseMass);
             }
         }
     }
@@ -292,7 +352,10 @@ void StructuralWorld::step(float dt) {
     for(auto& m:w.memberData)if(!m.broken){
         const auto& profile=materialProfile(m.material);
         const auto* a=w.particleFor(m.a);const auto* b=w.particleFor(m.b);if(!a||!b)continue;
-        const float span=distance(a->p,b->p);
+        float span=0.0f;
+        for(std::size_t i=1;i<m.particles.size();++i){
+            span+=distance(w.particles[m.particles[i-1]].p,w.particles[m.particles[i]].p);
+        }
         const float strain=std::fabs(span-m.restLength)/std::max(.001f,m.restLength);
         float maxAngle=0;
         for(std::size_t i=1;i+1<m.particles.size();++i){
@@ -331,7 +394,9 @@ void StructuralWorld::resetDemo(){
     // A pinned-base portal frame with diagonal bracing and a central roof load.
     NodeId n[9];
     const Vec2 points[]={{5,1},{5,4},{5,7},{9,1},{9,4},{9,7},{13,1},{13,4},{13,7}};
-    for(int i=0;i<9;++i)n[i]=addNode(points[i],i%3==0&&i/3==0 || i==6);
+    // All three column feet are supported so the starter experiment remains
+    // stable under its own weight before the player adds destructive loads.
+    for(int i=0;i<9;++i)n[i]=addNode(points[i],i==0||i==3||i==6);
     const int links[][2]={{0,1},{1,2},{3,4},{4,5},{6,7},{7,8},{0,3},{3,6},{1,4},{4,7},{2,5},{5,8},{0,4},{4,8},{2,4},{4,6}};
     for(const auto& link:links)addMember(n[link[0]],n[link[1]],MaterialKind::Steel,link[0]%3==0?MemberRole::Column:MemberRole::Beam);
     addLoad({9,7.65f},220);

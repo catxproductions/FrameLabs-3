@@ -3,7 +3,6 @@ name: Windows Desktop Build
 on:
   push:
     branches:
-      - feat/ui-foundation
       - main
     tags:
       - "v*"
@@ -11,6 +10,7 @@ on:
       - "CMakeLists.txt"
       - "native/**"
       - "scripts/**"
+      - "tests/**"
       - ".github/workflows/windows-build.yml"
   pull_request:
     branches:
@@ -19,6 +19,7 @@ on:
       - "CMakeLists.txt"
       - "native/**"
       - "scripts/**"
+      - "tests/**"
       - ".github/workflows/windows-build.yml"
   workflow_dispatch:
 
@@ -38,6 +39,9 @@ jobs:
 
       - name: Compile native application
         run: cmake --build build --config Release --parallel
+
+      - name: Run structural regression tests
+        run: ctest --test-dir build -C Release --output-on-failure
 
       - name: Verify executable
         shell: pwsh

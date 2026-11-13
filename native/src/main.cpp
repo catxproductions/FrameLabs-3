@@ -1,7 +1,14 @@
 #include "framelabs/StructuralWorld.hpp"
 #include <raylib.h>
 #ifdef _WIN32
+// Keep Win32 API names from colliding with raylib's public API and types.
+#define CloseWindow Win32ApiCloseWindow
+#define ShowCursor Win32ApiShowCursor
+#define Rectangle Win32GdiRectangle
 #include <windows.h>
+#undef CloseWindow
+#undef ShowCursor
+#undef Rectangle
 #undef DrawText
 #endif
 #include <algorithm>
@@ -83,27 +90,46 @@ void drawWorld(const StructuralWorld&w,App&a){
  DrawRectangle(14,GetScreenHeight()-42,vw-28,27,Color{8,8,18,220});DrawRectangleLines(14,GetScreenHeight()-42,vw-28,27,Line);DrawText(a.status.c_str(),25,GetScreenHeight()-34,9,Muted);
 }
 void drawSidebar(StructuralWorld&w,App&a){
- int x=GetScreenWidth()-Side;DrawRectangle(x,Top,Side,GetScreenHeight()-Top,Panel);DrawLine(x,Top,x,GetScreenHeight(),Line);
+ const int x=GetScreenWidth()-Side,height=GetScreenHeight();
+ const bool compact=height<850;
+ DrawRectangle(x,Top,Side,height-Top,Panel);DrawLine(x,Top,x,height,Line);
  DrawText("STRUCTURAL LAB",x+20,80,9,Purple);DrawText("Toolbox",x+20,101,26,Text);DrawLine(x+18,140,x+Side-18,140,Line);DrawText("TOOLS",x+20,158,9,Muted);
- const char* names[]={"Select","Add node","Connect members","Add load","Heat brush"};Tool tools[]={Tool::Select,Tool::Node,Tool::Member,Tool::Load,Tool::Heat};
- for(int i=0;i<5;i++)if(button({(float)x+18,180.0f+i*43,Side-36.0f,36},names[i],a.tool==tools[i])){a.tool=tools[i];a.firstNode=0;a.status=std::string(names[i])+" selected";}
- DrawLine(x+18,408,x+Side-18,408,Line);DrawText("MATERIAL",x+20,426,9,Muted);
+ const char* names[]={"Select","Add node","Connect members","Add load","Heat brush"};
+ Tool tools[]={Tool::Select,Tool::Node,Tool::Member,Tool::Load,Tool::Heat};
+ const float toolStart=compact?166.0f:180.0f,toolStep=compact?35.0f:43.0f,toolHeight=compact?30.0f:36.0f;
+ for(int i=0;i<5;i++)if(button({(float)x+18,toolStart+i*toolStep,Side-36.0f,toolHeight},names[i],a.tool==tools[i])){a.tool=tools[i];a.firstNode=0;a.status=std::string(names[i])+" selected";}
+ const float materialLine=compact?350.0f:408.0f,materialTitle=compact?366.0f:426.0f,materialStart=compact?389.0f:450.0f,materialStep=compact?36.0f:42.0f,materialHeight=compact?30.0f:34.0f;
+ DrawLine(x+18,materialLine,x+Side-18,materialLine,Line);DrawText("MATERIAL",x+20,(int)materialTitle,9,Muted);
  MaterialKind mats[]={MaterialKind::Steel,MaterialKind::Wood,MaterialKind::Composite,MaterialKind::Concrete};
- for(int i=0;i<4;i++){float bx=x+18+(i%2)*130,by=450+(i/2)*42;if(button({bx,by,122,34},materialName(mats[i]),a.material==mats[i]))a.material=mats[i];}
- DrawLine(x+18,540,x+Side-18,540,Line);DrawText("SIMULATION",x+20,558,9,Muted);
- if(button({(float)x+18,580,Side-36.0f,38},a.paused?"Resume":"Pause"))a.paused=!a.paused;
- if(button({(float)x+18,625,Side-36.0f,38},"Reset experiment")){w.resetDemo();a.selectedNode=0;a.selectedMember=0;a.firstNode=0;}
- if(button({(float)x+18,670,Side-36.0f,38},a.stress?"Stress overlay: ON":"Stress overlay: OFF"))a.stress=!a.stress;
- DrawLine(x+18,725,x+Side-18,725,Line);
- DrawText(TextFormat("%i nodes  /  %i members",(int)w.nodeCount(),(int)w.memberCount()),x+20,746,11,Text);
- DrawText(TextFormat("%i failed members",(int)w.brokenMemberCount()),x+20,768,10,Color{232,143,116,255});
- DrawText("MATERIAL RESPONSE / GAME UNITS",x+20,GetScreenHeight()-44,8,Muted);
+ for(int i=0;i<4;i++){float bx=x+18+(i%2)*130,by=materialStart+(i/2)*materialStep;if(button({bx,by,122,materialHeight},materialName(mats[i]),a.material==mats[i]))a.material=mats[i];}
+ const float simulationLine=compact?466.0f:540.0f,simulationTitle=compact?482.0f:558.0f,simulationStart=compact?502.0f:580.0f,simulationStep=compact?37.0f:45.0f,simulationHeight=compact?31.0f:38.0f;
+ DrawLine(x+18,simulationLine,x+Side-18,simulationLine,Line);DrawText("SIMULATION",x+20,(int)simulationTitle,9,Muted);
+ if(button({(float)x+18,simulationStart,Side-36.0f,simulationHeight},a.paused?"Resume":"Pause"))a.paused=!a.paused;
+ if(button({(float)x+18,simulationStart+simulationStep,Side-36.0f,simulationHeight},"Reset experiment")){w.resetDemo();a.selectedNode=0;a.selectedMember=0;a.firstNode=0;}
+ if(button({(float)x+18,simulationStart+2*simulationStep,Side-36.0f,simulationHeight},a.stress?"Stress overlay: ON":"Stress overlay: OFF"))a.stress=!a.stress;
+ DrawLine(x+18,compact?620:725,x+Side-18,compact?620:725,Line);
+ if(compact){
+  DrawText(TextFormat("%i nodes / %i members",(int)w.nodeCount(),(int)w.memberCount()),x+20,height-52,9,Text);
+  DrawText(TextFormat("%i failed members",(int)w.brokenMemberCount()),x+20,height-36,8,Color{232,143,116,255});
+  DrawText("MATERIAL RESPONSE / GAME UNITS",x+20,height-17,7,Muted);
+ }else{
+  DrawText(TextFormat("%i nodes  /  %i members",(int)w.nodeCount(),(int)w.memberCount()),x+20,746,11,Text);
+  DrawText(TextFormat("%i failed members",(int)w.brokenMemberCount()),x+20,768,10,Color{232,143,116,255});
+  DrawText("MATERIAL RESPONSE / GAME UNITS",x+20,height-44,8,Muted);
+ }
 }
 void input(StructuralWorld&w,App&a){
- Vector2 mouse=GetMousePosition();if(mouse.x>GetScreenWidth()-Side||mouse.y<Top)return;
- if(IsKeyPressed(KEY_SPACE))a.paused=!a.paused;if(IsKeyPressed(KEY_R)){w.resetDemo();a.firstNode=0;}
- if(IsKeyPressed(KEY_ONE))a.tool=Tool::Select;if(IsKeyPressed(KEY_TWO))a.tool=Tool::Node;
- if(IsKeyPressed(KEY_THREE))a.tool=Tool::Member;if(IsKeyPressed(KEY_FOUR))a.tool=Tool::Load;if(IsKeyPressed(KEY_FIVE))a.tool=Tool::Heat;
+ Vector2 mouse=GetMousePosition();
+ // Keyboard commands are global to the active workspace, not the pointer region.
+ if(IsKeyPressed(KEY_SPACE))a.paused=!a.paused;
+ if(IsKeyPressed(KEY_R)){w.resetDemo();a.firstNode=0;a.selectedNode=0;a.selectedMember=0;}
+ auto chooseTool=[&](Tool tool){if(a.tool!=tool){a.tool=tool;a.firstNode=0;}};
+ if(IsKeyPressed(KEY_ONE))chooseTool(Tool::Select);
+ if(IsKeyPressed(KEY_TWO))chooseTool(Tool::Node);
+ if(IsKeyPressed(KEY_THREE))chooseTool(Tool::Member);
+ if(IsKeyPressed(KEY_FOUR))chooseTool(Tool::Load);
+ if(IsKeyPressed(KEY_FIVE))chooseTool(Tool::Heat);
+ if(mouse.x>GetScreenWidth()-Side||mouse.y<Top)return;
  if(IsMouseButtonDown(MOUSE_BUTTON_MIDDLE)){Vector2 d=GetMouseDelta();a.pan.x+=d.x;a.pan.y+=d.y;}
  float wheel=GetMouseWheelMove();if(wheel!=0&&inView(mouse))a.zoom=clampf(a.zoom+wheel*.08f,.45f,2.4f);
  if(a.tool==Tool::Heat&&IsMouseButtonDown(MOUSE_BUTTON_LEFT)&&inView(mouse)){w.applyHeat(screenToWorld(mouse,a),1.7f,520,GetFrameTime());return;}
