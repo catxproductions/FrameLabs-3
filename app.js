@@ -230,6 +230,7 @@
       state.nextNode = 1; state.nextMember = 1;
       state.firstNode = null; state.selectedNode = null; state.selectedMember = null;
       const w = Math.max(420, canvas.clientWidth), h = Math.max(280, canvas.clientHeight);
+      state.width = w; state.height = h;
       const x = [w * .28, w * .50, w * .72], y = [h * .72, h * .43, h * .15];
       const grid = [];
       for (let row = 0; row < 3; row++) {
