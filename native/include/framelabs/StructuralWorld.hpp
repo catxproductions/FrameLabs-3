@@ -24,7 +24,15 @@ struct Rgb8 {
 enum class MaterialKind : std::uint8_t {
     Steel,
     Wood,
-    Composite
+    Composite,
+    Concrete
+};
+
+enum class MemberRole : std::uint8_t {
+    Beam,
+    Column,
+    Brace,
+    Slab
 };
 
 struct MaterialProfile {
@@ -66,6 +74,7 @@ struct MemberView {
     NodeId nodeA = 0;
     NodeId nodeB = 0;
     MaterialKind material = MaterialKind::Steel;
+    MemberRole role = MemberRole::Beam;
     Vec2 start{};
     Vec2 end{};
     float restLength = 0.0f;
@@ -110,11 +119,13 @@ public:
     bool toggleNodePin(NodeId id);
     bool getNodePosition(NodeId id, Vec2& outPosition) const;
 
-    MemberId addMember(NodeId nodeA, NodeId nodeB, MaterialKind material);
+    MemberId addMember(NodeId nodeA, NodeId nodeB, MaterialKind material, MemberRole role = MemberRole::Beam);
     bool removeMember(MemberId id);
     MemberId findMemberNear(Vec2 point, float radius) const;
 
     std::uint32_t addLoad(Vec2 position, float massKg = 110.0f);
+    std::uint32_t findLoadNear(Vec2 position, float radius) const;
+    bool removeLoad(std::uint32_t id);
     void applyHeat(Vec2 position, float radius, float degreesPerSecond, float deltaSeconds);
     void setWind(float normalizedStrength) noexcept;
     void step(float deltaSeconds);
@@ -128,6 +139,7 @@ public:
     std::size_t brokenMemberCount() const noexcept;
     std::size_t bodyCount() const noexcept;
     float simulationTime() const noexcept;
+    int workerCount() const noexcept;
 
 private:
     struct Impl;
