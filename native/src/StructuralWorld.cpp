@@ -400,7 +400,7 @@ void StructuralWorld::step(float dt) {
             // Normalize total material stiffness across the solver iterations.
             const float axialTarget=clampf(.92f*stiffness,0.0f,.9999f);
             const float axialGain=1.0f-std::pow(1.0f-axialTarget,1.0f/SolverIterations);
-            const float bendTarget=clampf(profile.angularBendHertz/40.0f*3.0f*stiffness,.08f,.95f);
+            const float bendTarget=clampf(profile.angularBendHertz/40.0f*2.2f*stiffness,.08f,.95f);
             const float bendGain=1.0f-std::pow(1.0f-bendTarget,1.0f/SolverIterations);
             for(const auto& c:m.axial){
                 auto& a=w.particles[c.a];auto& b=w.particles[c.b];
