@@ -12,7 +12,7 @@
 </head>
 <body>
 <div class="app">
-<section class="screen menu-screen active" id="menuScreen">
+<section class="screen menu-screen menu-layout active" id="menuScreen">
  <div class="menu-rail">
   <div class="brand"><div class="mark"><i></i><i></i><i></i></div><div><small>ACIDIC PRODUCTIONS</small><h1>FrameLabs <b>3</b></h1></div></div>
   <div class="menu-center"><p class="eyebrow"><i></i> DESKTOP SIMULATION PROJECT</p><p class="intro">A 2D structural physics sandbox. Build frames, apply loads, and watch materials bend, weaken, and fail.</p>
@@ -93,11 +93,11 @@
   <section class="settings-panel active" id="graphicsPanel" role="tabpanel" aria-labelledby="graphicsTab" data-panel="graphics">
    <div class="panel-heading"><div><small class="eyebrow">VISUAL EXPERIENCE / 01</small><h2>Graphics</h2><p>Shape the look and feel of your FrameLabs environment.</p></div><span>01 <i>/</i> 02</span></div>
    <div class="settings-grid">
-    <article class="setting-card wide"><header><div><i>◫</i><h3>Visual preset</h3></div><small>DISPLAY</small></header><p>Choose a starting point for the visual presentation.</p><div class="segmented"><button data-choice="preset">Performance</button><button class="chosen" data-choice="preset">Balanced</button><button data-choice="preset">Cinematic</button></div></article>
+    <article class="setting-card wide"><header><div><i>◫</i><h3>Visual preset</h3></div><small>DISPLAY</small></header><p>Choose a starting point for the visual presentation.</p><div class="segmented"><button data-choice="preset" aria-pressed="false">Performance</button><button class="chosen" data-choice="preset" aria-pressed="true">Balanced</button><button data-choice="preset" aria-pressed="false">Cinematic</button></div></article>
     <article class="setting-card"><header><div><i>☼</i><h3>Lighting</h3></div><small>SCENE</small></header><p>Soft ambient illumination for the viewport.</p><label class="select-wrap"><select aria-label="Lighting quality"><option>High</option><option>Medium</option><option>Low</option></select><span>⌄</span></label></article>
-    <article class="setting-card"><header><div><i>◌</i><h3>Shadows</h3></div><small>DETAIL</small></header><p>Enable soft scene shadow presentation.</p><button class="switch on" role="switch" aria-checked="true" data-switch><i></i><b>On</b></button></article>
-    <article class="setting-card"><header><div><i>✧</i><h3>Reflections</h3></div><small>DETAIL</small></header><p>Surface reflections and visual highlights.</p><button class="switch on" role="switch" aria-checked="true" data-switch><i></i><b>On</b></button></article>
-    <article class="setting-card"><header><div><i>▧</i><h3>Ambient effects</h3></div><small>ATMOSPHERE</small></header><p>Extra atmosphere for the scene preview.</p><button class="switch" role="switch" aria-checked="false" data-switch><i></i><b>Off</b></button></article>
+    <article class="setting-card"><header><div><i>◌</i><h3 id="setting-shadows-label">Shadows</h3></div><small>DETAIL</small></header><p>Enable soft scene shadow presentation.</p><button class="switch on" role="switch" aria-checked="true" aria-labelledby="setting-shadows-label" data-switch><i></i><b>On</b></button></article>
+    <article class="setting-card"><header><div><i>✧</i><h3 id="setting-reflections-label">Reflections</h3></div><small>DETAIL</small></header><p>Surface reflections and visual highlights.</p><button class="switch on" role="switch" aria-checked="true" aria-labelledby="setting-reflections-label" data-switch><i></i><b>On</b></button></article>
+    <article class="setting-card"><header><div><i>▧</i><h3 id="setting-ambient-effects-label">Ambient effects</h3></div><small>ATMOSPHERE</small></header><p>Extra atmosphere for the scene preview.</p><button class="switch" role="switch" aria-checked="false" aria-labelledby="setting-ambient-effects-label" data-switch><i></i><b>Off</b></button></article>
     <article class="setting-card wide"><header><div><i>◩</i><h3>Render scale</h3></div><output data-output="render-scale">100%</output></header><p>Preview scale for rendering resolution.</p><div class="range"><input type="range" min="50" max="150" step="5" value="100" data-range="render-scale" aria-label="Render scale"><div><span>50%</span><span>100%</span><span>150%</span></div></div></article>
    </div>
   </section>
@@ -105,10 +105,10 @@
    <div class="panel-heading"><div><small class="eyebrow">SYSTEM BEHAVIOUR / 02</small><h2>Performance</h2><p>Configure the way FrameLabs is intended to use your system.</p></div><span>02 <i>/</i> 02</span></div>
    <div class="settings-grid">
     <article class="setting-card"><header><div><i>▤</i><h3>Frame limit</h3></div><small>DISPLAY</small></header><p>Target frame-rate preference.</p><label class="select-wrap"><select aria-label="Frame limit"><option>Unlimited</option><option>240 FPS</option><option>144 FPS</option><option>120 FPS</option><option>60 FPS</option></select><span>⌄</span></label></article>
-    <article class="setting-card"><header><div><i>▦</i><h3>GPU acceleration</h3></div><small>HARDWARE</small></header><p>Allow supported graphics hardware to assist the application.</p><button class="switch on" role="switch" aria-checked="true" data-switch data-mode="Auto"><i></i><b>Auto</b></button></article>
+    <article class="setting-card"><header><div><i>▦</i><h3 id="setting-gpu-acceleration-label">GPU acceleration</h3></div><small>HARDWARE</small></header><p>Allow supported graphics hardware to assist the application.</p><button class="switch on" role="switch" aria-checked="true" aria-labelledby="setting-gpu-acceleration-label" data-switch data-mode="Auto"><i></i><b>Auto</b></button></article>
     <article class="setting-card wide"><header><div><i>⌘</i><h3>Worker budget</h3></div><output data-output="worker-budget">75%</output></header><p>Preferred share of available CPU workers for application tasks.</p><div class="range"><input type="range" min="25" max="100" step="5" value="75" data-range="worker-budget" aria-label="Worker budget"><div><span>25%</span><span>75%</span><span>100%</span></div></div></article>
-    <article class="setting-card"><header><div><i>◉</i><h3>Resource monitor</h3></div><small>TELEMETRY</small></header><p>Show system information in the workspace.</p><button class="switch" role="switch" aria-checked="false" data-switch><i></i><b>Off</b></button></article>
-    <article class="setting-card"><header><div><i>↻</i><h3>Background tasks</h3></div><small>SYSTEM</small></header><p>Allow non-essential tasks while the workspace is active.</p><button class="switch on" role="switch" aria-checked="true" data-switch><i></i><b>On</b></button></article>
+    <article class="setting-card"><header><div><i>◉</i><h3 id="setting-resource-monitor-label">Resource monitor</h3></div><small>TELEMETRY</small></header><p>Show system information in the workspace.</p><button class="switch" role="switch" aria-checked="false" aria-labelledby="setting-resource-monitor-label" data-switch><i></i><b>Off</b></button></article>
+    <article class="setting-card"><header><div><i>↻</i><h3 id="setting-background-tasks-label">Background tasks</h3></div><small>SYSTEM</small></header><p>Allow non-essential tasks while the workspace is active.</p><button class="switch on" role="switch" aria-checked="true" aria-labelledby="setting-background-tasks-label" data-switch><i></i><b>On</b></button></article>
    </div>
    <p class="settings-note">ⓘ &nbsp; These controls are interface previews. They will connect to the native engine when the desktop application is developed.</p>
   </section>
