@@ -60,7 +60,18 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-      - name: Publish tagged Windows release
+      - name: Publish latest Windows release from main
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v0.4.${{ github.run_number }}
+          name: FrameLabs 3 v0.4.${{ github.run_number }}
+          target_commitish: main
+          files: build/bin/FrameLabs3.exe
+          generate_release_notes: true
+          make_latest: true
+
+      - name: Publish manually tagged Windows release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
