@@ -67,14 +67,25 @@ void heatBrushReachesMemberEndpoints() {
 }
 
 int main() {
-    try {
-        starterFrameRemainsIntactAtRest();
-        loadsContactTheFullLengthOfLongMembers();
-        heatBrushReachesMemberEndpoints();
-        std::cout << "FrameLabs 3 structural world regression tests passed.\n";
-        return 0;
-    } catch (const std::exception& error) {
-        std::cerr << "FrameLabs 3 structural world regression test failed: " << error.what() << '\n';
+    int failures = 0;
+    const auto run = [&](const char* name, const auto& test) {
+        try {
+            test();
+            std::cout << "[PASS] " << name << '\\n';
+        } catch (const std::exception& error) {
+            ++failures;
+            std::cerr << "[FAIL] " << name << ": " << error.what() << '\\n';
+        }
+    };
+
+    run("starter frame stability", starterFrameRemainsIntactAtRest);
+    run("continuous load contact", loadsContactTheFullLengthOfLongMembers);
+    run("full-length heat brush", heatBrushReachesMemberEndpoints);
+
+    if (failures != 0) {
+        std::cerr << failures << " structural regression test(s) failed.\\n";
         return 1;
     }
+    std::cout << "All FrameLabs 3 structural world regression tests passed.\\n";
+    return 0;
 }
