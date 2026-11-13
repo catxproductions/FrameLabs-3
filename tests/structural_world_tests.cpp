@@ -22,6 +22,18 @@ void starterFrameRemainsIntactAtRest() {
     StructuralWorld world;
     require(world.memberCount() == 16, "starter frame should contain 16 members");
     for (int i = 0; i < 120; ++i) world.step(1.0f / 120.0f);
+    if (world.brokenMemberCount() != 0) {
+        std::cerr << "Broken starter members after 1 second: " << world.brokenMemberCount() << '\\n';
+        for (const auto& member : world.members()) {
+            if (member.broken) {
+                std::cerr << "member=" << member.id
+                          << " stress=" << member.stressRatio
+                          << " bend=" << member.maxBendRadians
+                          << " strain=" << member.axialStrain
+                          << " temp=" << member.temperatureC << '\\n';
+            }
+        }
+    }
     require(world.brokenMemberCount() == 0, "starter frame fractured under its own weight");
 }
 
