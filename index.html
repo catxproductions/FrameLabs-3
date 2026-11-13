@@ -6,6 +6,7 @@
 <meta name="theme-color" content="#101020">
 <meta name="description" content="FrameLabs 3 — UI preview">
 <title>FrameLabs 3</title>
+<link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
 <link rel="stylesheet" href="styles.css">
 <script src="app.js" defer></script>
 </head>
@@ -103,7 +104,7 @@
    <div class="panel-heading"><div><small class="eyebrow">SYSTEM BEHAVIOUR / 02</small><h2>Performance</h2><p>Configure the way FrameLabs is intended to use your system.</p></div><span>02 <i>/</i> 02</span></div>
    <div class="settings-grid">
     <article class="setting-card"><header><div><i>▤</i><h3>Frame limit</h3></div><small>DISPLAY</small></header><p>Target frame-rate preference.</p><label class="select-wrap"><select aria-label="Frame limit"><option>Unlimited</option><option>240 FPS</option><option>144 FPS</option><option>120 FPS</option><option>60 FPS</option></select><span>⌄</span></label></article>
-    <article class="setting-card"><header><div><i>▦</i><h3>GPU acceleration</h3></div><small>HARDWARE</small></header><p>Allow supported graphics hardware to assist the application.</p><button class="switch on" role="switch" aria-checked="true" data-switch><i></i><b>Auto</b></button></article>
+    <article class="setting-card"><header><div><i>▦</i><h3>GPU acceleration</h3></div><small>HARDWARE</small></header><p>Allow supported graphics hardware to assist the application.</p><button class="switch on" role="switch" aria-checked="true" data-switch data-mode="Auto"><i></i><b>Auto</b></button></article>
     <article class="setting-card wide"><header><div><i>⌘</i><h3>Worker budget</h3></div><output data-output="worker-budget">75%</output></header><p>Preferred share of available CPU workers for application tasks.</p><div class="range"><input type="range" min="25" max="100" step="5" value="75" data-range="worker-budget" aria-label="Worker budget"><div><span>25%</span><span>75%</span><span>100%</span></div></div></article>
     <article class="setting-card"><header><div><i>◉</i><h3>Resource monitor</h3></div><small>TELEMETRY</small></header><p>Show system information in the workspace.</p><button class="switch" role="switch" aria-checked="false" data-switch><i></i><b>Off</b></button></article>
     <article class="setting-card"><header><div><i>↻</i><h3>Background tasks</h3></div><small>SYSTEM</small></header><p>Allow non-essential tasks while the workspace is active.</p><button class="switch on" role="switch" aria-checked="true" data-switch><i></i><b>On</b></button></article>
