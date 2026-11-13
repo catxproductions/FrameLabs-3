@@ -188,11 +188,34 @@
     document.head.appendChild(style);
 
     const ctx = canvas.getContext("2d");
+    // Material response follows FrameLabs 2's shared density/contact model.
+    // Values are game tuning, not certified structural-engineering properties.
+    // Lower bendStiffness means more elastic bending before the failure threshold.
     const materialProfiles = {
-      steel: { color: "#aaa8ed", bend: 0.72, strain: 0.34, stiffness: 0.995, heat: 0.58, flex: 0.90 },
-      wood: { color: "#bd9870", bend: 0.42, strain: 0.20, stiffness: 0.94, heat: 0.72, flex: 0.76 },
-      composite: { color: "#79c6c4", bend: 0.23, strain: 0.105, stiffness: 0.998, heat: 0.42, flex: 0.97 },
-      concrete: { color: "#9c9eae", bend: 0.20, strain: 0.09, stiffness: 0.999, heat: 0.35, flex: 0.98 }
+      steel: {
+        color: "#aaa8ed", density: 7.8, bend: 0.72, strain: 0.34,
+        stiffness: 0.995, bendStiffness: 0.68, heatSoftening: 0.58,
+        heatWeakening: 0.78, staticFriction: 0.50, dynamicFriction: 0.30,
+        restitution: 0.16, elasticity: 0.78, fatigueSeconds: 4.0
+      },
+      wood: {
+        color: "#bd9870", density: 0.68, bend: 0.42, strain: 0.20,
+        stiffness: 0.985, bendStiffness: 0.82, heatSoftening: 0.72,
+        heatWeakening: 0.92, staticFriction: 0.76, dynamicFriction: 0.49,
+        restitution: 0.12, elasticity: 0.58, fatigueSeconds: 2.5
+      },
+      composite: {
+        color: "#79c6c4", density: 1.25, bend: 0.23, strain: 0.105,
+        stiffness: 0.998, bendStiffness: 0.95, heatSoftening: 0.42,
+        heatWeakening: 0.86, staticFriction: 0.62, dynamicFriction: 0.38,
+        restitution: 0.10, elasticity: 0.32, fatigueSeconds: 3.2
+      },
+      concrete: {
+        color: "#9c9eae", density: 2.35, bend: 0.20, strain: 0.09,
+        stiffness: 0.999, bendStiffness: 0.98, heatSoftening: 0.35,
+        heatWeakening: 0.90, staticFriction: 0.88, dynamicFriction: 0.64,
+        restitution: 0.08, elasticity: 0.25, fatigueSeconds: 2.0
+      }
     };
     const state = {
       nodes: [], members: [], loads: [], nextNode: 1, nextMember: 1,
@@ -203,25 +226,56 @@
 
     const distance = (a, b) => Math.hypot(b.x - a.x, b.y - a.y);
     const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
-    const makeNode = (x, y, pinned = false) => ({
-      id: state.nextNode++, x, y, px: x, py: y, pinned, radius: 5.5
-    });
+    const makeNode = (x, y, pinned = false) => {
+      const node = {
+        id: state.nextNode++, x, y, px: x, py: y,
+        pinned, radius: 5.5, mass: 0.5, inverseMass: pinned ? 0 : 2
+      };
+      return node;
+    };
+
+    function makeLoad(x, y, massKg = 220) {
+      const physicalMass = Math.max(0.1, massKg / 100);
+      return {
+        x, y, px: x, py: y, mass: massKg,
+        inverseMass: 1 / physicalMass, radius: 10
+      };
+    }
+
+    function refreshNodeInverseMass(node) {
+      node.inverseMass = node.pinned ? 0 : 1 / Math.max(0.05, node.mass);
+    }
 
     function addMember(a, b, material) {
       if (!a || !b || a === b || state.members.some(m => !m.broken &&
         ((m.a === a && m.b === b) || (m.a === b && m.b === a)))) return null;
       const span = distance(a, b);
       if (span < 18) return null;
-      const profile = materialProfiles[material];
+      const profile = materialProfiles[material] || materialProfiles.steel;
       const points = [a];
+      const memberMass = Math.max(0.1, profile.density * span / 200);
+      const endpointMass = memberMass / 10;
+      a.mass += endpointMass;
+      b.mass += endpointMass;
+      refreshNodeInverseMass(a);
+      refreshNodeInverseMass(b);
       for (let i = 1; i < 5; i++) {
         const t = i / 5;
-        points.push({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t,
-          px: a.x + (b.x - a.x) * t, py: a.y + (b.y - a.y) * t, radius: 2.6 });
+        const point = {
+          x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t,
+          px: a.x + (b.x - a.x) * t, py: a.y + (b.y - a.y) * t,
+          radius: 2.6, mass: memberMass / 5,
+          inverseMass: 1 / Math.max(0.05, memberMass / 5), material
+        };
+        points.push(point);
       }
       points.push(b);
-      state.members.push({ id: state.nextMember++, a, b, points, material,
-        rest: span, segmentRest: span / 5, broken: false, stress: 0, temperature: 20 });
+      state.members.push({
+        id: state.nextMember++, a, b, points, material,
+        rest: span, segmentRest: span / 5, broken: false,
+        stress: 0, damage: 0, fatigue: 0, temperature: 20,
+        memberMass
+      });
       return state.members[state.members.length - 1];
     }
 
@@ -242,7 +296,7 @@
       }
       const links = [[0,1],[1,2],[3,4],[4,5],[6,7],[7,8],[0,3],[3,6],[1,4],[4,7],[2,5],[5,8],[0,4],[4,8],[2,4],[4,6]];
       links.forEach(([a,b], i) => addMember(state.nodes[a], state.nodes[b], "steel"));
-      state.loads.push({ x: w * .50, y: h * .105, px: w * .50, py: h * .105, mass: 220, radius: 10 });
+      state.loads.push(makeLoad(w * .50, h * .105, 220));
       state.ground = h * .82;
       updateInspector();
       draw();
@@ -362,7 +416,7 @@
     canvas.addEventListener("contextmenu", event => {
       event.preventDefault();
       const p = pointerPosition(event), node = closestNode(p.x, p.y);
-      if (node) { node.pinned = !node.pinned; node.px = node.x; node.py = node.y; updateInspector(); draw(); }
+      if (node) { node.pinned = !node.pinned; refreshNodeInverseMass(node); node.px = node.x; node.py = node.y; updateInspector(); draw(); }
     });
     canvas.addEventListener("pointerdown", event => {
       const p = pointerPosition(event);
@@ -385,7 +439,7 @@
         return;
       }
       if (state.tool === "load") {
-        state.loads.push({ x: p.x, y: p.y, px: p.x, py: p.y, mass: 220, radius: 10 });
+        state.loads.push(makeLoad(p.x, p.y, 220));
         updateInspector(); draw(); return;
       }
       if (state.tool === "heat") { applyHeat(p.x, p.y, .04); return; }
@@ -422,86 +476,184 @@
     }
 
     function solveConstraint(a, b, rest, stiffness) {
-      const dx = b.x-a.x, dy = b.y-a.y, len = Math.hypot(dx,dy);
-      if (len < .001) return;
-      const error = (len-rest)/len * stiffness;
-      const wa = a.pinned ? 0 : 1, wb = b.pinned ? 0 : 1, sum = wa+wb;
-      if (!sum) return;
-      const ox = dx*error, oy = dy*error;
-      a.x += ox*wa/sum; a.y += oy*wa/sum;
-      b.x -= ox*wb/sum; b.y -= oy*wb/sum;
+      const dx = b.x - a.x, dy = b.y - a.y;
+      const lengthNow = Math.hypot(dx, dy);
+      if (lengthNow < 0.001) return;
+      const wa = Math.max(0, a.inverseMass || 0);
+      const wb = Math.max(0, b.inverseMass || 0);
+      const weight = wa + wb;
+      if (weight <= 0) return;
+      const correction = ((lengthNow - rest) / lengthNow) * clamp(stiffness, 0, 1);
+      const ox = dx * correction, oy = dy * correction;
+      a.x += ox * wa / weight; a.y += oy * wa / weight;
+      b.x -= ox * wb / weight; b.y -= oy * wb / weight;
+    }
+
+    function velocityOf(p, dt) {
+      return { x: (p.x - p.px) / dt, y: (p.y - p.py) / dt };
+    }
+
+    function applyImpulse(p, impulseX, impulseY, dt) {
+      if (!p.inverseMass || dt <= 0) return;
+      const velocity = velocityOf(p, dt);
+      velocity.x += impulseX * p.inverseMass;
+      velocity.y += impulseY * p.inverseMass;
+      p.px = p.x - velocity.x * dt;
+      p.py = p.y - velocity.y * dt;
+    }
+
+    function integrateParticle(p, dt, profile = materialProfiles.concrete) {
+      if (p.pinned || p === state.dragging) {
+        p.px = p.x; p.py = p.y;
+        return;
+      }
+      const damping = Math.pow(0.998, dt * 120);
+      const vx = (p.x - p.px) * damping;
+      const vy = (p.y - p.py) * damping;
+      p.px = p.x; p.py = p.y;
+      p.x += vx;
+      p.y += vy + 620 * dt * dt;
+
+      if (p.y > state.ground) {
+        p.y = state.ground;
+        const materialFriction = profile || materialProfiles.concrete;
+        let velocityX = (p.x - p.px) / dt;
+        const velocityY = (p.y - p.py) / dt;
+        const groundProfile = materialProfiles.concrete;
+        const staticFriction = (materialFriction.staticFriction + groundProfile.staticFriction) * 0.5;
+        const dynamicFriction = (materialFriction.dynamicFriction + groundProfile.dynamicFriction) * 0.5;
+        const stopSpeed = staticFriction * 620 * dt;
+        if (Math.abs(velocityX) <= stopSpeed) velocityX = 0;
+        else velocityX -= Math.sign(velocityX) * dynamicFriction * 620 * dt;
+        const restitution = Math.min(0.35, (materialFriction.restitution + groundProfile.restitution) * 0.5);
+        const reboundY = velocityY > 0 ? -velocityY * restitution : 0;
+        p.px = p.x - velocityX * dt;
+        p.py = p.y - reboundY * dt;
+      }
+    }
+
+    function solveLoadMemberContact(load, member, dt, solveVelocity) {
+      if (member.broken) return;
+      const profile = materialProfiles[member.material];
+      for (let i = 1; i < member.points.length; i++) {
+        const a = member.points[i - 1], b = member.points[i];
+        const dx = b.x - a.x, dy = b.y - a.y;
+        const denominator = dx * dx + dy * dy;
+        const t = clamp(((load.x - a.x) * dx + (load.y - a.y) * dy) /
+          Math.max(1, denominator), 0, 1);
+        const qx = a.x + dx * t, qy = a.y + dy * t;
+        const deltaX = load.x - qx, deltaY = load.y - qy;
+        const distanceNow = Math.hypot(deltaX, deltaY);
+        const minimumDistance = load.radius + Math.max(2.6, a.radius || 0, b.radius || 0);
+        if (distanceNow >= minimumDistance) continue;
+
+        const normalX = distanceNow > 0.001 ? deltaX / distanceNow : 0;
+        const normalY = distanceNow > 0.001 ? deltaY / distanceNow : -1;
+        const invLoad = load.inverseMass;
+        const invA = (a.inverseMass || 0) * (1 - t) * (1 - t);
+        const invB = (b.inverseMass || 0) * t * t;
+        const inverseMassSum = invLoad + invA + invB;
+        if (inverseMassSum <= 1e-8) continue;
+        const penetration = minimumDistance - distanceNow;
+        a.x -= normalX * penetration * (a.inverseMass || 0) * (1 - t) / inverseMassSum;
+        a.y -= normalY * penetration * (a.inverseMass || 0) * (1 - t) / inverseMassSum;
+        b.x -= normalX * penetration * (b.inverseMass || 0) * t / inverseMassSum;
+        b.y -= normalY * penetration * (b.inverseMass || 0) * t / inverseMassSum;
+        load.x += normalX * penetration * invLoad / inverseMassSum;
+        load.y += normalY * penetration * invLoad / inverseMassSum;
+
+        if (!solveVelocity || dt <= 0) continue;
+        let va = velocityOf(a, dt), vb = velocityOf(b, dt), vl = velocityOf(load, dt);
+        let vmx = va.x * (1 - t) + vb.x * t;
+        let vmy = va.y * (1 - t) + vb.y * t;
+        let relativeX = vl.x - vmx, relativeY = vl.y - vmy;
+        const closingSpeed = relativeX * normalX + relativeY * normalY;
+        let normalImpulse = 0;
+        if (closingSpeed < 0) {
+          normalImpulse = -(1 + profile.restitution) * closingSpeed / inverseMassSum;
+          applyImpulse(load, normalX * normalImpulse, normalY * normalImpulse, dt);
+          applyImpulse(a, -normalX * normalImpulse * (1 - t), -normalY * normalImpulse * (1 - t), dt);
+          applyImpulse(b, -normalX * normalImpulse * t, -normalY * normalImpulse * t, dt);
+        }
+
+        va = velocityOf(a, dt); vb = velocityOf(b, dt); vl = velocityOf(load, dt);
+        vmx = va.x * (1 - t) + vb.x * t;
+        vmy = va.y * (1 - t) + vb.y * t;
+        relativeX = vl.x - vmx; relativeY = vl.y - vmy;
+        const tangentX = -normalY, tangentY = normalX;
+        const tangentSpeed = relativeX * tangentX + relativeY * tangentY;
+        if (Math.abs(tangentSpeed) > 1e-5) {
+          const mu = Math.abs(tangentSpeed) < 0.12 ? profile.staticFriction : profile.dynamicFriction;
+          const limit = normalImpulse * clamp(mu, 0, 1.2);
+          const tangentImpulse = clamp(-tangentSpeed / inverseMassSum, -limit, limit);
+          applyImpulse(load, tangentX * tangentImpulse, tangentY * tangentImpulse, dt);
+          applyImpulse(a, -tangentX * tangentImpulse * (1 - t), -tangentY * tangentImpulse * (1 - t), dt);
+          applyImpulse(b, -tangentX * tangentImpulse * t, -tangentY * tangentImpulse * t, dt);
+        }
+      }
     }
 
     function physicsStep(dt) {
-      const gravity = 620;
-      for (const node of state.nodes) {
-        if (node.pinned || node === state.dragging) continue;
-        const vx = (node.x-node.px)*.995, vy = (node.y-node.py)*.995;
-        node.px = node.x; node.py = node.y;
-        node.x += vx; node.y += vy + gravity*dt*dt;
-        if (node.y > state.ground) { node.y = state.ground; node.py = node.y + Math.max(0, vy)*.2; }
-      }
+      for (const node of state.nodes) integrateParticle(node, dt, materialProfiles.concrete);
       for (const member of state.members) {
-        for (const p of member.points.slice(1,-1)) {
-          const vx = (p.x-p.px)*.994, vy = (p.y-p.py)*.994;
-          p.px = p.x; p.py = p.y; p.x += vx; p.y += vy + gravity*dt*dt;
-          if (p.y > state.ground) { p.y = state.ground; p.py = p.y; }
+        const profile = materialProfiles[member.material];
+        for (let i = 1; i < member.points.length - 1; i++) {
+          integrateParticle(member.points[i], dt, profile);
         }
       }
-      for (const load of state.loads) {
-        const vx = (load.x-load.px)*.99, vy = (load.y-load.py)*.99;
-        load.px = load.x; load.py = load.y;
-        load.x += vx; load.y += vy + gravity*dt*dt;
-        if (load.y > state.ground-load.radius) { load.y = state.ground-load.radius; load.py = load.y; }
-      }
-      for (let iteration = 0; iteration < 12; iteration++) {
+      for (const load of state.loads) integrateParticle(load, dt, materialProfiles.concrete);
+
+      const solverIterations = 14;
+      for (let iteration = 0; iteration < solverIterations; iteration++) {
         for (const member of state.members) {
           if (member.broken) continue;
           const profile = materialProfiles[member.material];
-          const heat = clamp((member.temperature-20)/850,0,.9);
-          const stiffness = profile.stiffness * (1-profile.heat*heat);
+          const heat = clamp((member.temperature - 20) / 850, 0, 1);
+          const stiffness = profile.stiffness * (1 - profile.heatSoftening * heat);
+          const bendStiffness = profile.bendStiffness * (1 - profile.heatSoftening * heat);
           for (let i = 1; i < member.points.length; i++) {
-            solveConstraint(member.points[i-1], member.points[i], member.segmentRest, stiffness);
+            solveConstraint(member.points[i - 1], member.points[i], member.segmentRest, stiffness);
           }
-          const bendStiffness = profile.flex;
-          for (let i = 1; i+1 < member.points.length; i++) {
-            solveConstraint(member.points[i-1], member.points[i+1], member.segmentRest*2, bendStiffness*(1-profile.heat*heat));
+          for (let i = 1; i + 1 < member.points.length; i++) {
+            solveConstraint(member.points[i - 1], member.points[i + 1],
+              member.segmentRest * 2, bendStiffness);
           }
         }
         for (const load of state.loads) {
           for (const member of state.members) {
-            if (member.broken) continue;
-            for (let i = 1; i < member.points.length; i++) {
-              const a = member.points[i-1], b = member.points[i], dx=b.x-a.x, dy=b.y-a.y;
-              const t=clamp(((load.x-a.x)*dx+(load.y-a.y)*dy)/Math.max(1,dx*dx+dy*dy),0,1);
-              const qx=a.x+dx*t, qy=a.y+dy*t, d=Math.hypot(load.x-qx,load.y-qy), min=load.radius+3;
-              if (d < min && d > .001) {
-                const push=(min-d), nx=(load.x-qx)/d, ny=(load.y-qy)/d;
-                if (!a.pinned) { a.x-=nx*push*.18; a.y-=ny*push*.18; }
-                if (!b.pinned) { b.x-=nx*push*.18; b.y-=ny*push*.18; }
-                load.x+=nx*push*.64; load.y+=ny*push*.64;
-              }
-            }
+            solveLoadMemberContact(load, member, dt, iteration === solverIterations - 1);
           }
         }
       }
+
       for (const member of state.members) {
         if (member.broken) continue;
         const profile = materialProfiles[member.material];
-        let length = 0, maxAngle = 0;
-        for (let i=1;i<member.points.length;i++) length += distance(member.points[i-1],member.points[i]);
-        for (let i=1;i+1<member.points.length;i++) {
-          const a=member.points[i-1],b=member.points[i],c=member.points[i+1];
-          const a1=Math.atan2(b.y-a.y,b.x-a.x),a2=Math.atan2(c.y-b.y,c.x-b.x);
-          let angle=Math.abs(a2-a1); if(angle>Math.PI) angle=2*Math.PI-angle;
-          maxAngle=Math.max(maxAngle,angle);
+        let currentLength = 0, maxAngle = 0;
+        for (let i = 1; i < member.points.length; i++) {
+          currentLength += distance(member.points[i - 1], member.points[i]);
         }
-        const heat=clamp((member.temperature-20)/800,0,.92);
-        const heatEase=1-profile.heat*heat;
-        const strain=Math.abs(length-member.rest)/Math.max(1,member.rest);
-        member.stress=Math.max(strain/(profile.strain*heatEase),maxAngle/(profile.bend*heatEase));
-        if (member.stress > 1.12) member.broken = true;
-        member.temperature=Math.max(20,member.temperature-dt*1.5);
+        for (let i = 1; i + 1 < member.points.length; i++) {
+          const a = member.points[i - 1], b = member.points[i], c = member.points[i + 1];
+          const angleA = Math.atan2(b.y - a.y, b.x - a.x);
+          const angleB = Math.atan2(c.y - b.y, c.x - b.x);
+          let angle = Math.abs(angleB - angleA);
+          if (angle > Math.PI) angle = 2 * Math.PI - angle;
+          maxAngle = Math.max(maxAngle, angle);
+        }
+
+        const excessTemperature = Math.max(0, member.temperature - 20);
+        const heat = clamp(excessTemperature / 850, 0, 1);
+        const strengthFactor = 1 - profile.heatWeakening * heat;
+        const bendingCapacity = Math.max(0.08, profile.bend * strengthFactor);
+        const axialCapacity = Math.max(0.03, profile.strain * strengthFactor);
+        const strain = Math.abs(currentLength - member.rest) / Math.max(1, member.rest);
+        member.stress = Math.max(strain / axialCapacity, maxAngle / bendingCapacity);
+        if (member.stress > 0.72) member.fatigue += dt * (member.stress - 0.68) * 0.42;
+        else member.fatigue = Math.max(0, member.fatigue - dt * 0.08);
+        member.damage = clamp(member.damage + Math.max(0, member.stress - 0.85) * dt * 0.16, 0, 0.99);
+        if (member.stress > 1.12 || member.fatigue > profile.fatigueSeconds) member.broken = true;
+        member.temperature = Math.max(20, member.temperature - dt * 1.5);
       }
     }
 
@@ -555,10 +707,22 @@
     }
 
     function frame(time) {
-      if (!state.lastTime) state.lastTime=time;
-      const dt=Math.min((time-state.lastTime)/1000,.033);
-      state.lastTime=time;
-      if (!state.paused && currentScreen==="workspace") physicsStep(dt);
+      if (!state.lastTime) state.lastTime = time;
+      const frameDelta = clamp((time - state.lastTime) / 1000, 0, 0.1);
+      state.lastTime = time;
+      if (!state.paused && currentScreen === "workspace") {
+        const fixedStep = 1 / 120;
+        state.accumulator = Math.min(0.1, state.accumulator + frameDelta);
+        let steps = 0;
+        while (state.accumulator >= fixedStep && steps < 12) {
+          physicsStep(fixedStep);
+          state.accumulator -= fixedStep;
+          steps++;
+        }
+        if (steps === 12) state.accumulator = 0;
+      } else {
+        state.accumulator = 0;
+      }
       draw();
       requestAnimationFrame(frame);
     }
