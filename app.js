@@ -193,7 +193,7 @@
     // Lower bendStiffness means more elastic bending before the failure threshold.
     const materialProfiles = {
       steel: {
-        color: "#aaa8ed", density: 7.8, bend: 0.72, strain: 0.34,
+        color: "#aaa8ed", density: 7.8, bend: 0.95, strain: 0.34,
         stiffness: 0.995, bendStiffness: 0.68, heatSoftening: 0.58,
         heatWeakening: 0.78, staticFriction: 0.50, dynamicFriction: 0.30,
         restitution: 0.16, elasticity: 0.78, fatigueSeconds: 4.0
