@@ -2,6 +2,7 @@
 #include <raylib.h>
 #ifdef _WIN32
 #include <windows.h>
+#undef DrawText
 #endif
 #include <algorithm>
 #include <cmath>
