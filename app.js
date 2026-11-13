@@ -106,11 +106,11 @@
       if (action.dataset.action === "about") {
         const dialog = document.getElementById("aboutDialog");
         if (dialog && typeof dialog.showModal === "function") dialog.showModal();
-        else notify("FrameLabs 3 — UI preview / Version 0.1.0");
+        else notify("FrameLabs 3 — 2D Structural Lab / Version 0.4.0");
       } else if (action.dataset.action === "reset-view") {
         notify("Viewport layout reset. Scene controls are a UI preview.");
       } else if (action.dataset.action === "workspace-info") {
-        notify("Workspace controls are visual placeholders until the engine is developed.");
+        notify("This browser page is a preview. The native Windows game contains the 2D structural simulation.");
       }
     }
   });
