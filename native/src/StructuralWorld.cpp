@@ -449,7 +449,9 @@ void StructuralWorld::step(float dt) {
             maxAngle=std::max(maxAngle,std::fabs(wrapAngle(angleOf(d1)-angleOf(d0))));
         }
         const float heat=clampf((m.temperature-20)/800,0,.92f);
-        const float heatEase=1.0f-profile.heatSoftening*heat;
+        const float heatStrength=clampf(1.0f-profile.heatWeakening*heat,.08f,1.0f);
+        const float remainingIntegrity=std::max(.05f,1.0f-m.damage);
+        const float heatEase=heatStrength*remainingIntegrity;
         const float bendRatio=maxAngle/std::max(.001f,profile.breakBendRadians*heatEase);
         const float strainRatio=strain/std::max(.001f,profile.breakStrain*heatEase);
         m.stress=std::max(bendRatio,strainRatio);
