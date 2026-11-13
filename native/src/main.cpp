@@ -1,5 +1,8 @@
 #include "framelabs/StructuralWorld.hpp"
 #include <raylib.h>
+#ifdef _WIN32
+#include <windows.h>
+#endif
 #include <algorithm>
 #include <cmath>
 #include <string>
@@ -127,3 +130,7 @@ int main(){
  }
  CloseWindow();return 0;
 }
+#ifdef _WIN32
+int main();
+int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) { return main(); }
+#endif
