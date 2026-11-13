@@ -1,7 +1,14 @@
 #include "framelabs/StructuralWorld.hpp"
 #include <raylib.h>
 #ifdef _WIN32
+// Keep Win32 API names from colliding with raylib's public API and types.
+#define CloseWindow Win32ApiCloseWindow
+#define ShowCursor Win32ApiShowCursor
+#define Rectangle Win32GdiRectangle
 #include <windows.h>
+#undef CloseWindow
+#undef ShowCursor
+#undef Rectangle
 #undef DrawText
 #endif
 #include <algorithm>
@@ -100,10 +107,17 @@ void drawSidebar(StructuralWorld&w,App&a){
  DrawText("MATERIAL RESPONSE / GAME UNITS",x+20,GetScreenHeight()-44,8,Muted);
 }
 void input(StructuralWorld&w,App&a){
- Vector2 mouse=GetMousePosition();if(mouse.x>GetScreenWidth()-Side||mouse.y<Top)return;
- if(IsKeyPressed(KEY_SPACE))a.paused=!a.paused;if(IsKeyPressed(KEY_R)){w.resetDemo();a.firstNode=0;}
- if(IsKeyPressed(KEY_ONE))a.tool=Tool::Select;if(IsKeyPressed(KEY_TWO))a.tool=Tool::Node;
- if(IsKeyPressed(KEY_THREE))a.tool=Tool::Member;if(IsKeyPressed(KEY_FOUR))a.tool=Tool::Load;if(IsKeyPressed(KEY_FIVE))a.tool=Tool::Heat;
+ Vector2 mouse=GetMousePosition();
+ // Keyboard commands are global to the active workspace, not the pointer region.
+ if(IsKeyPressed(KEY_SPACE))a.paused=!a.paused;
+ if(IsKeyPressed(KEY_R)){w.resetDemo();a.firstNode=0;a.selectedNode=0;a.selectedMember=0;}
+ auto chooseTool=[&](Tool tool){if(a.tool!=tool){a.tool=tool;a.firstNode=0;}};
+ if(IsKeyPressed(KEY_ONE))chooseTool(Tool::Select);
+ if(IsKeyPressed(KEY_TWO))chooseTool(Tool::Node);
+ if(IsKeyPressed(KEY_THREE))chooseTool(Tool::Member);
+ if(IsKeyPressed(KEY_FOUR))chooseTool(Tool::Load);
+ if(IsKeyPressed(KEY_FIVE))chooseTool(Tool::Heat);
+ if(mouse.x>GetScreenWidth()-Side||mouse.y<Top)return;
  if(IsMouseButtonDown(MOUSE_BUTTON_MIDDLE)){Vector2 d=GetMouseDelta();a.pan.x+=d.x;a.pan.y+=d.y;}
  float wheel=GetMouseWheelMove();if(wheel!=0&&inView(mouse))a.zoom=clampf(a.zoom+wheel*.08f,.45f,2.4f);
  if(a.tool==Tool::Heat&&IsMouseButtonDown(MOUSE_BUTTON_LEFT)&&inView(mouse)){w.applyHeat(screenToWorld(mouse,a),1.7f,520,GetFrameTime());return;}
