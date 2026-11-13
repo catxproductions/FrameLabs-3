@@ -98,9 +98,9 @@ struct LoadView {
 
 /// Native 2D structural world.
 ///
-/// Box2D owns collisions, rigid-body integration, and the joint solver. FrameLabs
-/// owns the structure graph, material response, stress/fatigue model, heat, and
-/// structural-member fracture. A fractured member leaves its segments as debris.
+/// FrameLabs uses a custom position-based particle/constraint solver for member
+/// deformation, load contact, material response, stress/fatigue, heat, and fracture.
+/// Fractured members release their constraints and their segments continue as debris.
 class StructuralWorld {
 public:
     StructuralWorld();
