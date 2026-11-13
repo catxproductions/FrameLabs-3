@@ -37,6 +37,9 @@ jobs:
       - name: Configure CMake
         run: cmake -S . -B build -A x64 -DCMAKE_BUILD_TYPE=Release
 
+      - name: Validate browser simulation JavaScript
+        run: node --check app.js
+
       - name: Compile native application
         run: cmake --build build --config Release --parallel
 
