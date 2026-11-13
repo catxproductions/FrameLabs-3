@@ -105,7 +105,7 @@ struct StructuralWorld::Impl {
         }
         memberViews.clear();
         for(const auto& m:memberData) {
-            if(m.broken) continue;
+            // Keep fractured members visible as separated debris segments.
             const auto* a=particleFor(m.a); const auto* b=particleFor(m.b);
             if(!a||!b) continue;
             MemberView v;
@@ -165,16 +165,17 @@ MemberId StructuralWorld::addMember(NodeId a,NodeId b,MaterialKind material,Memb
     auto* pa=impl_->particleFor(a); auto* pb=impl_->particleFor(b);
     if(!pa||!pb)return 0;
     for(const auto& m:impl_->memberData) if(!m.broken&&((m.a==a&&m.b==b)||(m.a==b&&m.b==a)))return m.id;
-    const float span=distance(pa->p,pb->p); if(span<.15f)return 0;
+    const Vec2 startPosition=pa->p, endPosition=pb->p;
+    const float span=distance(startPosition,endPosition); if(span<.15f)return 0;
     MemberData m; m.id=impl_->nextMember++;m.a=a;m.b=b;m.material=material;m.role=role;m.restLength=span;
-    m.restAngle=angleOf(sub(pb->p,pa->p));
+    m.restAngle=angleOf(sub(endPosition,startPosition));
     const std::size_t ia=static_cast<std::size_t>(pa-impl_->particles.data());
     const std::size_t ib=static_cast<std::size_t>(pb-impl_->particles.data());
     m.particles.push_back(ia);
     const auto& profile=materialProfile(material);
     for(int i=1;i<MemberSubdivisions;++i) {
         const float t=static_cast<float>(i)/MemberSubdivisions;
-        Particle p; p.p=add(pa->p,mul(sub(pb->p,pa->p),t));p.previous=p.p;
+        Particle p; p.p=add(startPosition,mul(sub(endPosition,startPosition),t));p.previous=p.p;
         p.inverseMass=1.0f/std::max(.15f,profile.density*.25f*span/MemberSubdivisions);
         p.radius=.045f;
         m.particles.push_back(impl_->particles.size());impl_->particles.push_back(p);
@@ -198,7 +199,7 @@ MemberId StructuralWorld::findMemberNear(Vec2 p,float radius) const {
     }return best;
 }
 std::uint32_t StructuralWorld::addLoad(Vec2 p,float mass) {
-    LoadData l;l.view.id=impl_->nextLoad++;l.view.position=p;l.view.massKg=clampf(mass,10,10000);l.view.radius=.27f;
+    LoadData l;l.view.id=impl_->nextLoad++;l.view.position=p;l.view.massKg=clampf(mass,10,10000);l.view.radius=.27f;l.velocity=p;
     impl_->loadData.push_back(l);impl_->rebuildViews();return l.view.id;
 }
 std::uint32_t StructuralWorld::findLoadNear(Vec2 p,float radius) const {
@@ -319,7 +320,6 @@ void StructuralWorld::resetDemo(){
     const int links[][2]={{0,1},{1,2},{3,4},{4,5},{6,7},{7,8},{0,3},{3,6},{1,4},{4,7},{2,5},{5,8},{0,4},{4,8},{2,4},{4,6}};
     for(const auto& link:links)addMember(n[link[0]],n[link[1]],MaterialKind::Steel,link[0]%3==0?MemberRole::Column:MemberRole::Beam);
     addLoad({9,7.65f},220);
-    rebuildViews:
     impl_->rebuildViews();
 }
 
