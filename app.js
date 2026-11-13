@@ -189,10 +189,10 @@
 
     const ctx = canvas.getContext("2d");
     const materialProfiles = {
-      steel: { color: "#aaa8ed", bend: 0.72, strain: 0.34, stiffness: 0.92, heat: 0.58 },
-      wood: { color: "#bd9870", bend: 0.42, strain: 0.20, stiffness: 0.84, heat: 0.72 },
-      composite: { color: "#79c6c4", bend: 0.23, strain: 0.105, stiffness: 0.96, heat: 0.42 },
-      concrete: { color: "#9c9eae", bend: 0.20, strain: 0.09, stiffness: 0.98, heat: 0.35 }
+      steel: { color: "#aaa8ed", bend: 0.72, strain: 0.34, stiffness: 0.995, heat: 0.58, flex: 0.90 },
+      wood: { color: "#bd9870", bend: 0.42, strain: 0.20, stiffness: 0.94, heat: 0.72, flex: 0.76 },
+      composite: { color: "#79c6c4", bend: 0.23, strain: 0.105, stiffness: 0.998, heat: 0.42, flex: 0.97 },
+      concrete: { color: "#9c9eae", bend: 0.20, strain: 0.09, stiffness: 0.999, heat: 0.35, flex: 0.98 }
     };
     const state = {
       nodes: [], members: [], loads: [], nextNode: 1, nextMember: 1,
@@ -454,7 +454,7 @@
         load.x += vx; load.y += vy + gravity*dt*dt;
         if (load.y > state.ground-load.radius) { load.y = state.ground-load.radius; load.py = load.y; }
       }
-      for (let iteration = 0; iteration < 7; iteration++) {
+      for (let iteration = 0; iteration < 12; iteration++) {
         for (const member of state.members) {
           if (member.broken) continue;
           const profile = materialProfiles[member.material];
@@ -463,7 +463,7 @@
           for (let i = 1; i < member.points.length; i++) {
             solveConstraint(member.points[i-1], member.points[i], member.segmentRest, stiffness);
           }
-          const bendStiffness = member.material === "steel" ? .26 : member.material === "wood" ? .42 : .68;
+          const bendStiffness = profile.flex;
           for (let i = 1; i+1 < member.points.length; i++) {
             solveConstraint(member.points[i-1], member.points[i+1], member.segmentRest*2, bendStiffness*(1-profile.heat*heat));
           }
