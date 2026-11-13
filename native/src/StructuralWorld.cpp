@@ -10,7 +10,8 @@ namespace {
 constexpr float Pi = 3.14159265358979323846f;
 constexpr float Gravity = 9.81f;
 constexpr float GroundY = 0.0f;
-constexpr int SolverIterations = 16;
+constexpr int SolverIterations = 12;
+constexpr float MaxPhysicsSubstep = 1.0f / 240.0f;
 constexpr int MemberSubdivisions = 5;
 
 float clampf(float v, float lo, float hi) { return std::max(lo, std::min(v, hi)); }
@@ -32,7 +33,8 @@ float wrapAngle(float a) { while(a > Pi) a -= 2*Pi; while(a < -Pi) a += 2*Pi; re
 struct Particle {
     Vec2 p{}, previous{};
     bool pinned = false;
-    float inverseMass = 1.0f;
+    float mass = 0.5f;
+    float inverseMass = 2.0f;
     float radius = 0.075f;
 };
 struct Constraint {
@@ -91,10 +93,10 @@ const MaterialProfile& materialProfile(MaterialKind kind) noexcept {
     // little, and composite is deliberately stiff/brittle. Heat reduces both
     // bending stiffness and failure thresholds.
     static const MaterialProfile profiles[] = {
-        {"steel","Steel",{120,202,255},7.8f,15.0f,9.0f,25.0f,18.0f,0.20f,0.75f,0.22f,0.72f,0.78f,4.0f},
-        {"wood","Wood",{220,167,106},0.68f,23.0f,13.0f,7.0f,5.0f,0.055f,0.105f,0.055f,0.82f,0.92f,2.5f},
-        {"composite","Composite",{178,151,230},1.25f,31.0f,18.0f,11.0f,8.0f,0.022f,0.060f,0.028f,0.90f,0.86f,3.2f},
-        {"concrete","Concrete",{180,190,205},2.35f,27.0f,15.0f,14.0f,10.0f,0.012f,0.035f,0.018f,0.88f,0.90f,2.0f}
+        {"steel","Steel",{120,202,255},7.8f,15.0f,9.0f,25.0f,18.0f,0.20f,0.75f,0.22f,0.72f,0.78f,4.0f,0.50f,0.30f,0.16f,0.78f,0.78f},
+        {"wood","Wood",{220,167,106},0.68f,23.0f,13.0f,7.0f,5.0f,0.055f,0.105f,0.055f,0.82f,0.92f,2.5f,0.76f,0.49f,0.12f,0.62f,0.58f},
+        {"composite","Composite",{178,151,230},1.25f,31.0f,18.0f,11.0f,8.0f,0.022f,0.060f,0.028f,0.90f,0.86f,3.2f,0.62f,0.38f,0.10f,0.45f,0.32f},
+        {"concrete","Concrete",{180,190,205},2.35f,27.0f,15.0f,14.0f,10.0f,0.012f,0.035f,0.018f,0.88f,0.90f,2.0f,0.88f,0.64f,0.08f,0.28f,0.25f}
     };
     return profiles[static_cast<unsigned>(kind) < 4 ? static_cast<unsigned>(kind) : 0];
 }
@@ -179,7 +181,8 @@ void StructuralWorld::clear() {
 NodeId StructuralWorld::addNode(Vec2 p,bool pinned) {
     const NodeId id=impl_->nextNode++;
     Particle particle; particle.p=p; particle.previous=p; particle.pinned=pinned;
-    particle.inverseMass=pinned?0.0f:1.0f;
+    particle.mass=0.5f;
+    particle.inverseMass=pinned?0.0f:1.0f/particle.mass;
     impl_->nodes.push_back({id,impl_->particles.size()});
     impl_->particles.push_back(particle);
     impl_->rebuildViews(); return id;
@@ -191,7 +194,7 @@ NodeId StructuralWorld::findNodeNear(Vec2 p,float radius) const {
 }
 bool StructuralWorld::toggleNodePin(NodeId id) {
     for(auto& n:impl_->nodes) if(n.id==id) {
-        auto& p=impl_->particles[n.particle]; p.pinned=!p.pinned; p.inverseMass=p.pinned?0.0f:1.0f; p.previous=p.p;
+        auto& p=impl_->particles[n.particle]; p.pinned=!p.pinned; p.inverseMass=p.pinned?0.0f:1.0f/std::max(0.05f,p.mass); p.previous=p.p;
         impl_->rebuildViews(); return true;
     } return false;
 }
@@ -211,10 +214,18 @@ MemberId StructuralWorld::addMember(NodeId a,NodeId b,MaterialKind material,Memb
     const std::size_t ib=static_cast<std::size_t>(pb-impl_->particles.data());
     m.particles.push_back(ia);
     const auto& profile=materialProfile(material);
+    const float memberMass=std::max(0.1f,profile.density*0.25f*span);
+    const float endpointMass=memberMass/(2.0f*MemberSubdivisions);
+    // Share member mass with its endpoint nodes so connected members contribute
+    // to node inertia instead of every joint behaving like a massless hinge.
+    pa->mass+=endpointMass; pb->mass+=endpointMass;
+    pa->inverseMass=pa->pinned?0.0f:1.0f/std::max(0.05f,pa->mass);
+    pb->inverseMass=pb->pinned?0.0f:1.0f/std::max(0.05f,pb->mass);
     for(int i=1;i<MemberSubdivisions;++i) {
         const float t=static_cast<float>(i)/MemberSubdivisions;
         Particle p; p.p=add(startPosition,mul(sub(endPosition,startPosition),t));p.previous=p.p;
-        p.inverseMass=1.0f/std::max(.15f,profile.density*.25f*span/MemberSubdivisions);
+        p.mass=memberMass/MemberSubdivisions;
+        p.inverseMass=1.0f/std::max(0.05f,p.mass);
         p.radius=.045f;
         m.particles.push_back(impl_->particles.size());impl_->particles.push_back(p);
     }
@@ -267,12 +278,20 @@ void StructuralWorld::setWind(float v) noexcept { impl_->wind=clampf(v,0,1); }
 
 void StructuralWorld::step(float dt) {
     dt=clampf(dt,0,.0333f);if(dt<=0)return;
-    auto& w=*impl_;const float dt2=dt*dt;w.time+=dt;
+    auto& w=*impl_;
+    const int substeps=std::max(1,static_cast<int>(std::ceil(dt/MaxPhysicsSubstep)));
+    const float substepDt=dt/static_cast<float>(substeps);
+    for(int substep=0;substep<substeps;++substep){
+    dt=substepDt;
+    const float dt2=dt*dt;
+    const float damping=std::exp(-0.24f*dt);
+    w.time+=dt;
     for(auto& p:w.particles)if(p.inverseMass>0){
         Vec2 velocity=sub(p.p,p.previous);p.previous=p.p;
-        const float windAccel=w.wind*3.5f*(.5f+std::fabs(p.p.y)*.08f);
-        p.p.x+=velocity.x*.998f+windAccel*dt2;
-        p.p.y+=velocity.y*.998f-Gravity*dt2;
+        const float heightFactor=0.35f+clampf(p.p.y/20.0f,0.0f,1.5f);
+        const float windAccel=w.wind*w.wind*5.0f*heightFactor;
+        p.p.x+=velocity.x*damping+windAccel*dt2;
+        p.p.y+=velocity.y*damping-Gravity*dt2;
         if(p.p.y<p.radius){p.p.y=p.radius; p.previous.y=p.p.y+velocity.y*.18f;}
         if(p.p.x<-.5f){p.p.x=-.5f;p.previous.x=p.p.x+velocity.x*.2f;}
         if(p.p.x>40){p.p.x=40;p.previous.x=p.p.x+velocity.x*.2f;}
@@ -281,10 +300,10 @@ void StructuralWorld::step(float dt) {
     // proximity contacts to member particles and nodes.
     for(auto& l:w.loadData){
         Vec2 vel=sub(l.view.position,l.velocity);l.velocity=l.view.position;
-        l.view.position.x+=vel.x*.995f;
-        l.view.position.y+=vel.y*.995f-Gravity*dt2;
+        l.view.position.x+=vel.x*damping;
+        l.view.position.y+=vel.y*damping-Gravity*dt2;
         if(l.view.position.y<l.view.radius){l.view.position.y=l.view.radius;l.velocity.y=l.view.position.y;}
-        const float loadInverseMass=1.0f/std::max(0.1f,l.view.massKg/1000.0f);
+        const float loadInverseMass=1.0f/std::max(0.1f,l.view.massKg/100.0f);
         for(auto& p:w.particles)if(p.inverseMass>0){
             Vec2 delta=sub(p.p,l.view.position);
             float d=length(delta),minD=l.view.radius+p.radius;
@@ -378,6 +397,7 @@ void StructuralWorld::step(float dt) {
         m.temperature=std::max(20.0f,m.temperature-dt*1.3f);
     }
     w.rebuildViews();
+    }
 }
 const std::vector<NodeView>& StructuralWorld::nodes()const noexcept{return impl_->nodeViews;}
 const std::vector<MemberView>& StructuralWorld::members()const noexcept{return impl_->memberViews;}
