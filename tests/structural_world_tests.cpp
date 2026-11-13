@@ -73,6 +73,62 @@ void heatBrushReachesMemberEndpoints() {
     }
     require(heated, "heat brush did not reach the member endpoint");
 }
+
+void materialProfilesPreserveTheRequestedBendingOrder() {
+    const auto& steel = materialProfile(MaterialKind::Steel);
+    const auto& wood = materialProfile(MaterialKind::Wood);
+    const auto& composite = materialProfile(MaterialKind::Composite);
+    require(steel.breakBendRadians > wood.breakBendRadians,
+            "steel should tolerate more bending than wood");
+    require(wood.breakBendRadians > composite.breakBendRadians,
+            "wood should tolerate more bending than composite");
+    require(steel.density > wood.density,
+            "steel should be denser than wood");
+    require(wood.staticFriction > steel.staticFriction,
+            "wood should preserve its distinct contact profile");
+}
+
+void fixedSubstepsAreIndependentOfRenderStepGrouping() {
+    StructuralWorld oneLargeStep;
+    StructuralWorld twoSmallSteps;
+    oneLargeStep.step(1.0f / 60.0f);
+    twoSmallSteps.step(1.0f / 120.0f);
+    twoSmallSteps.step(1.0f / 120.0f);
+    require(oneLargeStep.nodes().size() == twoSmallSteps.nodes().size(),
+            "step grouping changed node count");
+    for (std::size_t i = 0; i < oneLargeStep.nodes().size(); ++i) {
+        const auto& a = oneLargeStep.nodes()[i].position;
+        const auto& b = twoSmallSteps.nodes()[i].position;
+        require(std::fabs(a.x - b.x) < 1e-4f && std::fabs(a.y - b.y) < 1e-4f,
+                "same elapsed time produced different node positions");
+    }
+    require(std::fabs(oneLargeStep.simulationTime() - twoSmallSteps.simulationTime()) < 1e-5f,
+            "fixed-step simulation time is not deterministic");
+}
+
+void longSimulationMaintainsFiniteState() {
+    StructuralWorld world;
+    for (int i = 0; i < 1200; ++i) world.step(1.0f / 120.0f);
+    for (const auto& node : world.nodes()) {
+        require(std::isfinite(node.position.x) && std::isfinite(node.position.y),
+                "node position became non-finite");
+    }
+    for (const auto& member : world.members()) {
+        require(std::isfinite(member.stressRatio) &&
+                std::isfinite(member.currentLength) &&
+                std::isfinite(member.temperatureC),
+                "member state became non-finite");
+        for (const auto& segment : member.segments) {
+            require(std::isfinite(segment.center.x) && std::isfinite(segment.center.y) &&
+                    std::isfinite(segment.angleRadians) && std::isfinite(segment.length),
+                    "member segment became non-finite");
+        }
+    }
+    for (const auto& load : world.loads()) {
+        require(std::isfinite(load.position.x) && std::isfinite(load.position.y),
+                "load position became non-finite");
+    }
+}
 }
 
 int main() {
@@ -91,6 +147,9 @@ int main() {
     run("starter frame stability without demonstration load", starterFrameRemainsIntactWithoutTestLoad);
     run("continuous load contact", loadsContactTheFullLengthOfLongMembers);
     run("full-length heat brush", heatBrushReachesMemberEndpoints);
+    run("material bending hierarchy and contact profiles", materialProfilesPreserveTheRequestedBendingOrder);
+    run("fixed-step determinism across render-step grouping", fixedSubstepsAreIndependentOfRenderStepGrouping);
+    run("finite state during extended simulation", longSimulationMaintainsFiniteState);
 
     if (failures != 0) {
         std::cerr << failures << " structural regression test(s) failed.\\n";
