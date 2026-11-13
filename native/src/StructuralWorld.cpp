@@ -255,6 +255,7 @@ void StructuralWorld::applyHeat(Vec2 p,float radius,float degreesPerSecond,float
             m.temperature=clampf(m.temperature+degreesPerSecond*dt*falloff,20,1200);
         }
     }
+    impl_->rebuildViews();
 }
 void StructuralWorld::setWind(float v) noexcept { impl_->wind=clampf(v,0,1); }
 
