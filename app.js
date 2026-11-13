@@ -758,16 +758,19 @@
       const solverIterations = 14;
       for (let iteration = 0; iteration < solverIterations; iteration++) {
         for (const member of state.members) {
-          if (member.broken) continue;
+          const hasFracture = member.broken && Number.isInteger(member.breakSegment);
+          if (member.broken && !hasFracture) continue;
           const profile = materialProfiles[member.material];
           const heat = clamp((member.temperature - 20) / 850, 0, 1);
           const thermalStiffness = 1 - profile.heatSoftening * heat;
           const axialGain = iterationGain(profile.stiffness * thermalStiffness, solverIterations);
           const bendGain = iterationGain(profile.bendStiffness * thermalStiffness, solverIterations);
           for (let i = 1; i < member.points.length; i++) {
+            if (hasFracture && i - 1 === member.breakSegment) continue;
             solveConstraint(member.points[i - 1], member.points[i], member.segmentRest, axialGain);
           }
           for (let i = 1; i + 1 < member.points.length; i++) {
+            if (hasFracture && (i === member.breakSegment || i === member.breakSegment + 1)) continue;
             solveConstraint(member.points[i - 1], member.points[i + 1],
               member.segmentRest * 2, bendGain);
           }
