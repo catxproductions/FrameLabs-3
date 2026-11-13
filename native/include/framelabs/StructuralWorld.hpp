@@ -44,6 +44,7 @@ struct MaterialProfile {
     float density = 1.0f;
     float linearBendHertz = 20.0f;
     float angularBendHertz = 12.0f;
+    float bendingStiffness = 0.985f;
     float ultimateForcePerThickness = 1.0f;
     float ultimateMomentPerThickness = 1.0f;
     float yieldBendRadians = 0.05f;
