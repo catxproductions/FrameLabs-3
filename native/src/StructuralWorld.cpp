@@ -397,23 +397,27 @@ void StructuralWorld::step(float dt) {
             const auto& profile=materialProfile(m.material);
             const float heat=clampf((m.temperature-20)/700,0,1);
             const float stiffness=clampf(1.0f-profile.heatSoftening*heat,.12f,1);
+            // Normalize total material stiffness across the solver iterations.
+            const float axialTarget=clampf(.92f*stiffness,0.0f,.9999f);
+            const float axialGain=1.0f-std::pow(1.0f-axialTarget,1.0f/SolverIterations);
+            const float bendTarget=clampf(profile.angularBendHertz/40.0f*3.0f*stiffness,.08f,.95f);
+            const float bendGain=1.0f-std::pow(1.0f-bendTarget,1.0f/SolverIterations);
             for(const auto& c:m.axial){
                 auto& a=w.particles[c.a];auto& b=w.particles[c.b];
                 Vec2 d=sub(b.p,a.p);float len=length(d);if(len<1e-6f)continue;
                 float wa=a.inverseMass,wb=b.inverseMass,sum=wa+wb;if(sum<=0)continue;
-                float error=(len-c.rest)/len*c.stiffness*stiffness;
+                float error=(len-c.rest)/len*axialGain;
                 Vec2 correction=mul(d,error);
                 a.p=add(a.p,mul(correction,wa/sum));b.p=sub(b.p,mul(correction,wb/sum));
             }
             // Second-neighbour constraints preserve each member's local curve
             // while allowing material-dependent elastic bending.
-            const float bendStiffness=clampf(profile.angularBendHertz/40.0f*3.0f*(1-profile.heatSoftening*heat),.08f,.82f);
             for(std::size_t i=1;i+1<m.particles.size();++i){
                 auto& a=w.particles[m.particles[i-1]];auto& b=w.particles[m.particles[i+1]];
                 const float rest=2.0f*m.restLength/MemberSubdivisions;
                 Vec2 d=sub(b.p,a.p);float len=length(d);if(len<1e-5f)continue;
                 float wa=a.inverseMass,wb=b.inverseMass,sum=wa+wb;if(sum<=0)continue;
-                Vec2 correction=mul(d,((len-rest)/len)*bendStiffness);
+                Vec2 correction=mul(d,((len-rest)/len)*bendGain);
                 a.p=add(a.p,mul(correction,wa/sum));b.p=sub(b.p,mul(correction,wb/sum));
             }
         }
