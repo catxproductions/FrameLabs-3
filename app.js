@@ -177,6 +177,7 @@
     style.textContent = `
       #simulationCanvas{position:absolute;z-index:1;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:crosshair}
       .viewport{isolation:isolate}.grid-bg{z-index:0;pointer-events:none}.hud,.axis{pointer-events:none}
+      .toolbar{overflow-y:auto;overscroll-behavior:contain}
       .browser-hint{margin:10px 2px 0;color:#77758f;font-size:8px;line-height:1.5}
       .browser-materials{display:grid;grid-template-columns:1fr;gap:7px;margin-top:15px}
       .browser-materials label{color:#77758f;font-size:7px;font-weight:800;letter-spacing:.13em}
