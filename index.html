@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#101020">
+<meta name="description" content="FrameLabs 3 — 2D structural stress and physics sandbox">
+<title>FrameLabs 3</title>
+<link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+<link rel="stylesheet" href="styles.css">
+<script src="app.js" defer></script>
+</head>
+<body>
+<div class="app">
+<section class="screen menu-screen active" id="menuScreen">
+ <div class="menu-rail">
+  <div class="brand"><div class="mark"><i></i><i></i><i></i></div><div><small>ACIDIC PRODUCTIONS</small><h1>FrameLabs <b>3</b></h1></div></div>
+  <div class="menu-center"><p class="eyebrow"><i></i> DESKTOP SIMULATION PROJECT</p><p class="intro">A 2D structural physics sandbox. Build frames, apply loads, and watch materials bend, weaken, and fail.</p>
+   <nav class="menu-nav" aria-label="Main menu">
+    <button class="menu-btn primary" data-nav="workspace"><span class="menu-icon">▶</span><strong>Start</strong><span class="arrow">↗</span></button>
+    <button class="menu-btn" data-nav="settings"><span class="menu-icon">⚙</span><strong>Settings</strong><span class="arrow">↗</span></button>
+    <a class="menu-btn" href="https://github.com/catxproductions/FrameLabs-3/releases/latest/download/FrameLabs3.exe"><span class="menu-icon">↓</span><strong>Download Windows build</strong><span class="arrow">↗</span></a>
+    <button class="menu-btn" data-action="about"><span class="menu-icon">ⓘ</span><strong>About</strong><span class="arrow">↗</span></button>
+   </nav>
+  </div>
+  <footer class="menu-footer"><span>— &nbsp; EARLY DEVELOPMENT</span><div><span>FRAME LABS / 003</span><span>© 2026</span></div></footer>
+ </div>
+ <main class="showcase">
+  <header><span>◇ &nbsp; THE NEXT GENERATION</span><span>FL / 03 &nbsp; ━ &nbsp; 001</span></header>
+  <div class="showcase-copy"><p class="eyebrow">DESIGN. TEST. DISCOVER.</p><h2>Structures<br>under <em>stress.</em></h2><p>Build connected 2D structures, load them, and see stress move through every member. Steel bends. Wood yields. Composite snaps.</p><div class="steps"><div><b>01</b><small>CREATE</small></div><div><b>02</b><small>EXPERIMENT</small></div><div><b>03</b><small>DISCOVER</small></div></div></div>
+  <div class="hero-art" aria-hidden="true">
+   <div class="orbit one"></div><div class="orbit two"></div>
+   <svg viewBox="0 0 760 650">
+    <defs><linearGradient id="beam" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#c0bdff"/><stop offset=".5" stop-color="#7774ca"/><stop offset="1" stop-color="#363568"/></linearGradient><filter id="glow"><feGaussianBlur stdDeviation="5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>
+    <g stroke="#7775bd" opacity=".16" fill="none"><path d="M80 530 380 350 690 530M80 480 380 300 690 480M80 430 380 250 690 430M150 390l300 180m-220-220 300 180m-220-220 300 180"/></g>
+    <g fill="none" stroke="url(#beam)" stroke-width="10" stroke-linejoin="round"><path d="M180 440V220l190-110 190 110v220M180 220h380M180 330h380M370 110v330m-190 0 190-110 190 110m-380-220 190 110 190-110m-380 110 190 110 190-110"/></g>
+    <g fill="none" stroke="#7774bd" stroke-width="5"><path d="M180 440v65m190-65v65m190-65v65M180 505h380"/></g>
+    <g fill="#c0bdff" filter="url(#glow)"><circle cx="180" cy="220" r="8"/><circle cx="370" cy="110" r="8"/><circle cx="560" cy="220" r="8"/><circle cx="180" cy="330" r="7"/><circle cx="370" cy="330" r="7"/><circle cx="560" cy="330" r="7"/><circle cx="180" cy="440" r="8"/><circle cx="370" cy="440" r="8"/><circle cx="560" cy="440" r="8"/></g>
+    <g fill="#aaa8ed" font-family="Arial,sans-serif" font-size="11" letter-spacing="3" opacity=".7"><text x="65" y="180">STRUCTURE / 01</text><text x="575" y="180">FRAME / 03</text><text x="75" y="570">FL-ENGINE // PREVIEW</text><text x="500" y="570">00 : 00 : 00</text></g>
+   </svg>
+   <small class="coordinate">FIG. 001 &nbsp; / &nbsp; STRUCTURAL STUDY</small>
+  </div>
+  <footer><span>ENGINEERING A NEW KIND OF SANDBOX</span><span>2D STRUCTURAL ENGINE &nbsp; ●</span></footer>
+ </main>
+</section>
+
+<section class="screen workspace-screen" id="workspaceScreen" aria-hidden="true">
+ <header class="topbar"><div class="topbrand"><span class="mark mini"><i></i><i></i><i></i></span><b>FRAMELABS <i>3</i></b><span class="crumb">SANDBOX / NEW PROJECT</span></div><div class="top-actions"><span class="local"><i></i> LOCAL SESSION</span><button class="icon-btn" data-nav="settings" aria-label="Settings">⚙</button><button class="text-btn" data-nav="menu">Main menu ↗</button></div></header>
+ <div class="workspace">
+  <main class="viewport-column">
+   <div class="view-heading"><div><small class="eyebrow">LIVE WORKSPACE</small><h2>Untitled environment</h2></div><div><span class="view-label">◇ &nbsp; EDITOR VIEW</span><button class="quiet-btn" data-action="reset-view">Reset view</button></div></div>
+   <div class="viewport">
+    <div class="grid-bg"></div><div class="hud hud-top"><span>◇ &nbsp; SCENE VIEWPORT</span><span>2D STRUCTURAL VIEW</span></div>
+    <svg class="scene-art" viewBox="0 0 1000 630" role="img" aria-label="Illustrative structural framework in the scene preview">
+     <defs><linearGradient id="sceneBeam" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#c4c0ff"/><stop offset="1" stop-color="#6260ab"/></linearGradient><filter id="sceneGlow"><feGaussianBlur stdDeviation="10"/></filter></defs>
+     <ellipse cx="500" cy="500" rx="300" ry="55" fill="#6866bd" opacity=".12" filter="url(#sceneGlow)"/>
+     <g fill="none" stroke="#8582c5" opacity=".16"><path d="m120 485 380-220 380 220M170 520l330-190 330 190M230 555l270-156 270 156"/></g>
+     <g fill="none" stroke="url(#sceneBeam)" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"><path d="M250 430V205l250-140 250 140v225M250 205h500M250 318h500M500 65v365m-250-225 250 113 250-113m-500 113 250 112 250-112m-500 112 250-112 250 112"/></g>
+     <g fill="#c2bfff" stroke="#16162f" stroke-width="3"><circle cx="250" cy="205" r="8"/><circle cx="500" cy="65" r="8"/><circle cx="750" cy="205" r="8"/><circle cx="250" cy="318" r="7"/><circle cx="500" cy="318" r="7"/><circle cx="750" cy="318" r="7"/><circle cx="250" cy="430" r="8"/><circle cx="500" cy="430" r="8"/><circle cx="750" cy="430" r="8"/></g>
+     <g fill="#9895d6" font-family="Arial,sans-serif" font-size="12" letter-spacing="2" opacity=".7"><text x="265" y="190">NODE 01</text><text x="515" y="53">NODE 02</text><text x="765" y="190">NODE 03</text><text x="265" y="462">BASE / A</text><text x="515" y="462">BASE / B</text><text x="765" y="462">BASE / C</text></g>
+    </svg>
+    <div class="hud hud-bottom"><span>STRUCTURAL PREVIEW &nbsp; · &nbsp; GRID ON</span><span>WORLD ORIGIN &nbsp; 0.00 / 0.00</span></div>
+    <span class="axis x">X</span><span class="axis y">Y</span><span class="axis z">Z</span>
+   </div>
+   <footer class="view-status"><span><i></i> READY &nbsp; / &nbsp; NO SIMULATION RUNNING</span><span>FRAMELABS 3 &nbsp; · &nbsp; 2D STRUCTURAL LAB</span></footer>
+  </main>
+  <aside class="toolbar">
+   <header><div><small class="eyebrow">CONTROL DECK</small><h2>Toolbar</h2></div><span>01 <i>/</i> 04</span></header>
+   <section class="tool-section"><h3><b>01</b> TOOLS <i></i></h3><div class="tool-grid">
+    <button class="tool selected" data-tool="Select" aria-pressed="true"><span>⌖</span><b>Select</b><kbd>V</kbd></button>
+    <button class="tool" data-tool="Move" aria-pressed="false"><span>✥</span><b>Move</b><kbd>G</kbd></button>
+    <button class="tool" data-tool="Place" aria-pressed="false"><span>＋</span><b>Place</b><kbd>P</kbd></button>
+    <button class="tool" data-tool="Inspect" aria-pressed="false"><span>⌕</span><b>Inspect</b><kbd>I</kbd></button>
+   </div></section>
+   <section class="tool-section"><h3><b>02</b> SCENE <i></i></h3><div class="scene-list">
+    <button class="scene-item current" data-scene="Environment"><span>◈</span><b>Environment<small>Active scene</small></b><i>◉</i></button>
+    <button class="scene-item" data-scene="Structure"><span>◇</span><b>Structure<small>9 elements</small></b><i>◉</i></button>
+    <button class="scene-item" data-scene="Ground plane"><span>▱</span><b>Ground plane<small>Default surface</small></b><i>◉</i></button>
+   </div></section>
+   <section class="tool-section inspector"><h3><b>03</b> INSPECTOR <i></i></h3><div class="nothing-selected"><span>＋</span><div><b>Nothing selected</b><small>Select an item in the scene to view its properties.</small></div></div><div class="property-list"><div>POSITION <b>—</b></div><div>ROTATION <b>—</b></div><div>DIMENSIONS <b>—</b></div></div></section>
+   <footer class="toolbar-footer"><button data-action="workspace-info">ⓘ &nbsp; Workspace help <b>↗</b></button><div><span>ACIDIC PRODUCTIONS</span><span>FL3 / 0.1.0</span></div></footer>
+  </aside>
+ </div>
+</section>
+
+<section class="screen settings-screen" id="settingsScreen" aria-hidden="true">
+ <header class="settings-header">
+  <button class="back-btn" data-nav="back" aria-label="Back">←</button>
+  <div class="settings-heading"><small class="eyebrow">PREFERENCES / CONFIGURATION</small><h1>SETTINGS</h1></div>
+  <nav class="tabs" role="tablist" aria-label="Settings categories"><button class="tab active" role="tab" aria-selected="true" aria-controls="graphicsPanel" id="graphicsTab" data-tab="graphics">Graphics<span></span></button><button class="tab" role="tab" aria-selected="false" aria-controls="performancePanel" id="performanceTab" data-tab="performance">Performance<span></span></button></nav>
+ </header>
+ <main class="settings-content">
+  <section class="settings-panel active" id="graphicsPanel" role="tabpanel" aria-labelledby="graphicsTab" data-panel="graphics">
+   <div class="panel-heading"><div><small class="eyebrow">VISUAL EXPERIENCE / 01</small><h2>Graphics</h2><p>Shape the look and feel of your FrameLabs environment.</p></div><span>01 <i>/</i> 02</span></div>
+   <div class="settings-grid">
+    <article class="setting-card wide"><header><div><i>◫</i><h3>Visual preset</h3></div><small>DISPLAY</small></header><p>Choose a starting point for the visual presentation.</p><div class="segmented"><button data-choice="preset">Performance</button><button class="chosen" data-choice="preset">Balanced</button><button data-choice="preset">Cinematic</button></div></article>
+    <article class="setting-card"><header><div><i>☼</i><h3>Lighting</h3></div><small>SCENE</small></header><p>Soft ambient illumination for the viewport.</p><label class="select-wrap"><select aria-label="Lighting quality"><option>High</option><option>Medium</option><option>Low</option></select><span>⌄</span></label></article>
+    <article class="setting-card"><header><div><i>◌</i><h3>Shadows</h3></div><small>DETAIL</small></header><p>Enable soft scene shadow presentation.</p><button class="switch on" role="switch" aria-checked="true" data-switch><i></i><b>On</b></button></article>
+    <article class="setting-card"><header><div><i>✧</i><h3>Reflections</h3></div><small>DETAIL</small></header><p>Surface reflections and visual highlights.</p><button class="switch on" role="switch" aria-checked="true" data-switch><i></i><b>On</b></button></article>
+    <article class="setting-card"><header><div><i>▧</i><h3>Ambient effects</h3></div><small>ATMOSPHERE</small></header><p>Extra atmosphere for the scene preview.</p><button class="switch" role="switch" aria-checked="false" data-switch><i></i><b>Off</b></button></article>
+    <article class="setting-card wide"><header><div><i>◩</i><h3>Render scale</h3></div><output data-output="render-scale">100%</output></header><p>Preview scale for rendering resolution.</p><div class="range"><input type="range" min="50" max="150" step="5" value="100" data-range="render-scale" aria-label="Render scale"><div><span>50%</span><span>100%</span><span>150%</span></div></div></article>
+   </div>
+  </section>
+  <section class="settings-panel" id="performancePanel" role="tabpanel" aria-labelledby="performanceTab" data-panel="performance" hidden>
+   <div class="panel-heading"><div><small class="eyebrow">SYSTEM BEHAVIOUR / 02</small><h2>Performance</h2><p>Configure the way FrameLabs is intended to use your system.</p></div><span>02 <i>/</i> 02</span></div>
+   <div class="settings-grid">
+    <article class="setting-card"><header><div><i>▤</i><h3>Frame limit</h3></div><small>DISPLAY</small></header><p>Target frame-rate preference.</p><label class="select-wrap"><select aria-label="Frame limit"><option>Unlimited</option><option>240 FPS</option><option>144 FPS</option><option>120 FPS</option><option>60 FPS</option></select><span>⌄</span></label></article>
+    <article class="setting-card"><header><div><i>▦</i><h3>GPU acceleration</h3></div><small>HARDWARE</small></header><p>Allow supported graphics hardware to assist the application.</p><button class="switch on" role="switch" aria-checked="true" data-switch data-mode="Auto"><i></i><b>Auto</b></button></article>
+    <article class="setting-card wide"><header><div><i>⌘</i><h3>Worker budget</h3></div><output data-output="worker-budget">75%</output></header><p>Preferred share of available CPU workers for application tasks.</p><div class="range"><input type="range" min="25" max="100" step="5" value="75" data-range="worker-budget" aria-label="Worker budget"><div><span>25%</span><span>75%</span><span>100%</span></div></div></article>
+    <article class="setting-card"><header><div><i>◉</i><h3>Resource monitor</h3></div><small>TELEMETRY</small></header><p>Show system information in the workspace.</p><button class="switch" role="switch" aria-checked="false" data-switch><i></i><b>Off</b></button></article>
+    <article class="setting-card"><header><div><i>↻</i><h3>Background tasks</h3></div><small>SYSTEM</small></header><p>Allow non-essential tasks while the workspace is active.</p><button class="switch on" role="switch" aria-checked="true" data-switch><i></i><b>On</b></button></article>
+   </div>
+   <p class="settings-note">ⓘ &nbsp; These controls are interface previews. They will connect to the native engine when the desktop application is developed.</p>
+  </section>
+  <footer class="settings-footer"><span>FRAMELABS 3 <b>/</b> SETTINGS</span><span>CHANGES ARE PREVIEW ONLY &nbsp; ●</span></footer>
+ </main>
+</section>
+</div>
+<div class="toast-region" id="toastRegion" role="status" aria-live="polite"></div>
+<dialog id="aboutDialog"><form method="dialog"><button class="close-dialog" aria-label="Close">×</button><small class="eyebrow">ACIDIC PRODUCTIONS</small><h2>FrameLabs <span>3</span></h2><p>A new generation of the FrameLabs project. This early interface prototype focuses on layout, navigation, and visual direction.</p><footer><span>VERSION 0.1.0</span><span>UI PREVIEW</span></footer><button class="dialog-done">Close</button></form></dialog>
+</body>
+</html>
