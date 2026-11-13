@@ -179,7 +179,11 @@ BodyHandle pickBody(const PhysicsWorld& physics, const Camera3D& camera, Vector2
         float pickRadius = body.radius * 1.25f;
 
         if (body.shape == PrimitiveShape::Box) {
-            pickRadius = Vector3Length(toRaylib(body.halfExtents)) * 1.1f;
+            pickRadius = std::sqrt(
+                body.halfExtents.x * body.halfExtents.x +
+                body.halfExtents.y * body.halfExtents.y +
+                body.halfExtents.z * body.halfExtents.z
+            ) * 1.1f;
         }
 
         const RayCollision hit = GetRayCollisionSphere(ray, center, std::max(pickRadius, 0.25f));
@@ -212,7 +216,7 @@ void drawWorld(
     for (const BodyView& body : physics.bodies()) {
         const Vector3 position = toRaylib(body.position);
         const Vector3 axis = toRaylibAxis(body);
-        const float angleDegrees = body.rotationAngleRadians * RAD2DEG;
+        const float angleDegrees = body.rotationAngleRadians * (180.0f / Pi);
         const Color color = toRaylibColor(body.color);
         const bool selected = body.handle == selectedBody;
 
