@@ -194,25 +194,25 @@
     const materialProfiles = {
       steel: {
         color: "#aaa8ed", density: 7.8, bend: 0.95, strain: 0.34,
-        stiffness: 0.995, bendStiffness: 0.68, heatSoftening: 0.58,
+        stiffness: 0.995, bendStiffness: 0.985, heatSoftening: 0.58,
         heatWeakening: 0.78, staticFriction: 0.50, dynamicFriction: 0.30,
         restitution: 0.16, elasticity: 0.78, fatigueSeconds: 4.0
       },
       wood: {
         color: "#bd9870", density: 0.68, bend: 0.42, strain: 0.20,
-        stiffness: 0.985, bendStiffness: 0.82, heatSoftening: 0.72,
+        stiffness: 0.985, bendStiffness: 0.991, heatSoftening: 0.72,
         heatWeakening: 0.92, staticFriction: 0.76, dynamicFriction: 0.49,
         restitution: 0.12, elasticity: 0.58, fatigueSeconds: 2.5
       },
       composite: {
         color: "#79c6c4", density: 1.25, bend: 0.23, strain: 0.105,
-        stiffness: 0.998, bendStiffness: 0.95, heatSoftening: 0.42,
+        stiffness: 0.998, bendStiffness: 0.997, heatSoftening: 0.42,
         heatWeakening: 0.86, staticFriction: 0.62, dynamicFriction: 0.38,
         restitution: 0.10, elasticity: 0.32, fatigueSeconds: 3.2
       },
       concrete: {
         color: "#9c9eae", density: 2.35, bend: 0.20, strain: 0.09,
-        stiffness: 0.999, bendStiffness: 0.98, heatSoftening: 0.35,
+        stiffness: 0.999, bendStiffness: 0.999, heatSoftening: 0.35,
         heatWeakening: 0.90, staticFriction: 0.88, dynamicFriction: 0.64,
         restitution: 0.08, elasticity: 0.25, fatigueSeconds: 2.0
       }
