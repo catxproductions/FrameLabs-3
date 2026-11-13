@@ -442,7 +442,7 @@
         state.loads.push(makeLoad(p.x, p.y, 220));
         updateInspector(); draw(); return;
       }
-      if (state.tool === "heat") { applyHeat(p.x, p.y, .04); return; }
+      if (state.tool === "heat") { applyHeat(p.x, p.y, 20); return; }
       const node = closestNode(p.x, p.y);
       const member = node ? null : closestMember(p.x, p.y);
       state.selectedNode = node; state.selectedMember = member;
@@ -455,7 +455,7 @@
         state.dragging.x = p.x; state.dragging.y = p.y;
         state.dragging.px = p.x; state.dragging.py = p.y;
         draw();
-      } else if (state.tool === "heat" && event.buttons === 1) applyHeat(p.x, p.y, .025);
+      } else if (state.tool === "heat" && event.buttons === 1) applyHeat(p.x, p.y, 8);
     });
     const endDrag = () => { state.dragging = null; };
     canvas.addEventListener("pointerup", endDrag);
@@ -644,9 +644,11 @@
 
         const excessTemperature = Math.max(0, member.temperature - 20);
         const heat = clamp(excessTemperature / 850, 0, 1);
-        const strengthFactor = 1 - profile.heatWeakening * heat;
-        const bendingCapacity = Math.max(0.08, profile.bend * strengthFactor);
-        const axialCapacity = Math.max(0.03, profile.strain * strengthFactor);
+        const strengthFactor = Math.max(0.08, 1 - profile.heatWeakening * heat);
+        const remainingIntegrity = Math.max(0.05, 1 - member.damage);
+        const effectiveCapacity = strengthFactor * remainingIntegrity;
+        const bendingCapacity = Math.max(0.08, profile.bend * effectiveCapacity);
+        const axialCapacity = Math.max(0.03, profile.strain * effectiveCapacity);
         const strain = Math.abs(currentLength - member.rest) / Math.max(1, member.rest);
         member.stress = Math.max(strain / axialCapacity, maxAngle / bendingCapacity);
         if (member.stress > 0.72) member.fatigue += dt * (member.stress - 0.68) * 0.42;
