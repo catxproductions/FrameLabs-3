@@ -593,6 +593,11 @@
       }
     }
 
+    function iterationGain(targetStiffness, iterations) {
+      const target = clamp(targetStiffness, 0, 0.9999);
+      return 1 - Math.pow(1 - target, 1 / Math.max(1, iterations));
+    }
+
     function physicsStep(dt) {
       for (const node of state.nodes) integrateParticle(node, dt, materialProfiles.concrete);
       for (const member of state.members) {
@@ -609,14 +614,15 @@
           if (member.broken) continue;
           const profile = materialProfiles[member.material];
           const heat = clamp((member.temperature - 20) / 850, 0, 1);
-          const stiffness = profile.stiffness * (1 - profile.heatSoftening * heat);
-          const bendStiffness = profile.bendStiffness * (1 - profile.heatSoftening * heat);
+          const thermalStiffness = 1 - profile.heatSoftening * heat;
+          const axialGain = iterationGain(profile.stiffness * thermalStiffness, solverIterations);
+          const bendGain = iterationGain(profile.bendStiffness * thermalStiffness, solverIterations);
           for (let i = 1; i < member.points.length; i++) {
-            solveConstraint(member.points[i - 1], member.points[i], member.segmentRest, stiffness);
+            solveConstraint(member.points[i - 1], member.points[i], member.segmentRest, axialGain);
           }
           for (let i = 1; i + 1 < member.points.length; i++) {
             solveConstraint(member.points[i - 1], member.points[i + 1],
-              member.segmentRest * 2, bendStiffness);
+              member.segmentRest * 2, bendGain);
           }
         }
         for (const load of state.loads) {
