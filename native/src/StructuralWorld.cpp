@@ -61,7 +61,25 @@ struct MemberData {
 struct NodeData { NodeId id=0; std::size_t particle=0; };
 struct LoadData { LoadView view{}; Vec2 velocity{}; };
 
-void resolveLoadSegmentContact(LoadData& load, Particle& a, Particle& b, float loadInverseMass) {
+void applyParticleImpulse(Particle& particle, Vec2 impulse, float dt) {
+    if (particle.inverseMass <= 0.0f || dt <= 1e-6f) return;
+    Vec2 velocity = mul(sub(particle.p, particle.previous), 1.0f / dt);
+    velocity = add(velocity, mul(impulse, particle.inverseMass));
+    particle.previous = sub(particle.p, mul(velocity, dt));
+}
+
+void applyLoadImpulse(LoadData& load, Vec2 impulse, float inverseMass, float dt) {
+    if (inverseMass <= 0.0f || dt <= 1e-6f) return;
+    Vec2 velocity = mul(sub(load.view.position, load.velocity), 1.0f / dt);
+    velocity = add(velocity, mul(impulse, inverseMass));
+    load.velocity = sub(load.view.position, mul(velocity, dt));
+}
+
+// Continuous capsule-versus-segment contact, with optional material-based
+// restitution and friction on the final solver pass.
+void resolveLoadSegmentContact(LoadData& load, Particle& a, Particle& b,
+                               float loadInverseMass, float dt,
+                               const MaterialProfile& profile, bool solveVelocity) {
     const Vec2 ab = sub(b.p, a.p);
     const float denominator = dot(ab, ab);
     const float t = denominator > 1e-8f
@@ -76,15 +94,63 @@ void resolveLoadSegmentContact(LoadData& load, Particle& a, Particle& b, float l
 
     const Vec2 normal = d > 1e-5f ? mul(delta, 1.0f / d) : Vec2{0.0f, 1.0f};
     const float oneMinusT = 1.0f - t;
-    const float effectiveMemberInverseMass =
-        a.inverseMass * oneMinusT * oneMinusT + b.inverseMass * t * t;
-    const float totalInverseMass = effectiveMemberInverseMass + loadInverseMass;
+    const float invA = a.inverseMass * oneMinusT * oneMinusT;
+    const float invB = b.inverseMass * t * t;
+    const float totalInverseMass = loadInverseMass + invA + invB;
     if (totalInverseMass <= 1e-8f) return;
 
     const float penetration = minimumDistance - d;
     a.p = add(a.p, mul(normal, penetration * a.inverseMass * oneMinusT / totalInverseMass));
     b.p = add(b.p, mul(normal, penetration * b.inverseMass * t / totalInverseMass));
     load.view.position = sub(load.view.position, mul(normal, penetration * loadInverseMass / totalInverseMass));
+
+    if (!solveVelocity || dt <= 1e-6f) return;
+    const auto particleVelocity = [dt](const Particle& p) {
+        return mul(sub(p.p, p.previous), 1.0f / dt);
+    };
+    const auto loadVelocity = [&load, dt]() {
+        return mul(sub(load.view.position, load.velocity), 1.0f / dt);
+    };
+    Vec2 va = particleVelocity(a), vb = particleVelocity(b), vl = loadVelocity();
+    Vec2 vm = add(mul(va, oneMinusT), mul(vb, t));
+    Vec2 relative = sub(vl, vm);
+    const float closingSpeed = dot(relative, normal);
+    float normalImpulse = 0.0f;
+    if (closingSpeed > 0.0f) {
+        normalImpulse = (1.0f + clampf(profile.restitution, 0.0f, 0.35f)) *
+                        closingSpeed / totalInverseMass;
+        applyLoadImpulse(load, mul(normal, -normalImpulse), loadInverseMass, dt);
+        applyParticleImpulse(a, mul(normal, normalImpulse * oneMinusT), dt);
+        applyParticleImpulse(b, mul(normal, normalImpulse * t), dt);
+    }
+
+    va = particleVelocity(a); vb = particleVelocity(b); vl = loadVelocity();
+    vm = add(mul(va, oneMinusT), mul(vb, t));
+    relative = sub(vl, vm);
+    const Vec2 tangent{-normal.y, normal.x};
+    const float tangentSpeed = dot(relative, tangent);
+    if (std::fabs(tangentSpeed) <= 1e-5f) return;
+    const float friction = std::fabs(tangentSpeed) < 0.12f
+        ? profile.staticFriction : profile.dynamicFriction;
+    const float limit = normalImpulse * clampf(friction, 0.0f, 1.2f);
+    const float tangentImpulse = clampf(-tangentSpeed / totalInverseMass, -limit, limit);
+    applyLoadImpulse(load, mul(tangent, tangentImpulse), loadInverseMass, dt);
+    applyParticleImpulse(a, mul(tangent, -tangentImpulse * oneMinusT), dt);
+    applyParticleImpulse(b, mul(tangent, -tangentImpulse * t), dt);
+}
+
+void resolveGroundContact(Vec2& position, Vec2& previous, float radius,
+                          float dt, const MaterialProfile& profile) {
+    if (position.y >= radius || dt <= 1e-6f) return;
+    position.y = radius;
+    float vx = (position.x - previous.x) / dt;
+    float vy = (position.y - previous.y) / dt;
+    const float stoppingSpeed = profile.staticFriction * Gravity * dt;
+    if (std::fabs(vx) <= stoppingSpeed) vx = 0.0f;
+    else vx -= std::copysign(profile.dynamicFriction * Gravity * dt, vx);
+    vy = vy < 0.0f ? -vy * clampf(profile.restitution, 0.0f, 0.35f) : 0.0f;
+    previous.x = position.x - vx * dt;
+    previous.y = position.y - vy * dt;
 }
 }
 
@@ -292,7 +358,7 @@ void StructuralWorld::step(float dt) {
         const float windAccel=w.wind*w.wind*5.0f*heightFactor;
         p.p.x+=velocity.x*damping+windAccel*dt2;
         p.p.y+=velocity.y*damping-Gravity*dt2;
-        if(p.p.y<p.radius){p.p.y=p.radius; p.previous.y=p.p.y+velocity.y*.18f;}
+        if(p.p.y<p.radius) resolveGroundContact(p.p,p.previous,p.radius,dt,materialProfile(MaterialKind::Concrete));
         if(p.p.x<-.5f){p.p.x=-.5f;p.previous.x=p.p.x+velocity.x*.2f;}
         if(p.p.x>40){p.p.x=40;p.previous.x=p.p.x+velocity.x*.2f;}
     }
@@ -302,7 +368,7 @@ void StructuralWorld::step(float dt) {
         Vec2 vel=sub(l.view.position,l.velocity);l.velocity=l.view.position;
         l.view.position.x+=vel.x*damping;
         l.view.position.y+=vel.y*damping-Gravity*dt2;
-        if(l.view.position.y<l.view.radius){l.view.position.y=l.view.radius;l.velocity.y=l.view.position.y;}
+        if(l.view.position.y<l.view.radius) resolveGroundContact(l.view.position,l.velocity,l.view.radius,dt,materialProfile(MaterialKind::Concrete));
         const float loadInverseMass=1.0f/std::max(0.1f,l.view.massKg/100.0f);
         for(auto& p:w.particles)if(p.inverseMass>0){
             Vec2 delta=sub(p.p,l.view.position);
@@ -322,7 +388,7 @@ void StructuralWorld::step(float dt) {
         // Resolve the load against the continuous segment geometry as well.
         for(auto& m:w.memberData)if(!m.broken){
             for(std::size_t i=1;i<m.particles.size();++i){
-                resolveLoadSegmentContact(l,w.particles[m.particles[i-1]],w.particles[m.particles[i]],loadInverseMass);
+                resolveLoadSegmentContact(l,w.particles[m.particles[i-1]],w.particles[m.particles[i]],loadInverseMass,dt,materialProfile(m.material),false);
             }
         }
     }
@@ -355,17 +421,17 @@ void StructuralWorld::step(float dt) {
     // Re-apply continuous contacts after structural constraints so the load
     // cannot be pushed back through a member by the solver in the same step.
     for(auto& l:w.loadData){
-        const float loadInverseMass=1.0f/std::max(0.1f,l.view.massKg/1000.0f);
+        const float loadInverseMass=1.0f/std::max(0.1f,l.view.massKg/100.0f);
         for(auto& m:w.memberData)if(!m.broken){
             for(std::size_t i=1;i<m.particles.size();++i){
-                resolveLoadSegmentContact(l,w.particles[m.particles[i-1]],w.particles[m.particles[i]],loadInverseMass);
+                resolveLoadSegmentContact(l,w.particles[m.particles[i-1]],w.particles[m.particles[i]],loadInverseMass,dt,materialProfile(m.material),true);
             }
         }
     }
-    // Contact response between nearby free particles keeps debris from simply
-    // passing through adjacent pieces. Ground and world bounds are stable.
+    // Re-apply frictional ground contact after constraints to prevent
+    // particles being projected below the floor at the end of a substep.
     for(auto& p:w.particles)if(p.inverseMass>0){
-        if(p.p.y<p.radius){p.p.y=p.radius;p.previous.y=p.p.y;}
+        resolveGroundContact(p.p,p.previous,p.radius,dt,materialProfile(MaterialKind::Concrete));
         if(p.p.x<-.5f)p.p.x=-.5f;if(p.p.x>40)p.p.x=40;
     }
     for(auto& m:w.memberData)if(!m.broken){
