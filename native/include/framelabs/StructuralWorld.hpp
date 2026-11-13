@@ -52,6 +52,14 @@ struct MaterialProfile {
     float heatSoftening = 0.7f;
     float heatWeakening = 0.7f;
     float fatigueSeconds = 1.5f;
+
+    // Contact properties ported from FrameLabs 2's shared material model.
+    // Values remain game tuning, not engineering-grade coefficients.
+    float staticFriction = 0.6f;
+    float dynamicFriction = 0.4f;
+    float restitution = 0.1f;
+    float wetSensitivity = 0.4f;
+    float elasticity = 0.4f;
 };
 
 const MaterialProfile& materialProfile(MaterialKind kind) noexcept;
