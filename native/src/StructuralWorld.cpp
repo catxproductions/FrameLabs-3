@@ -237,9 +237,24 @@ void StructuralWorld::step(float dt) {
         l.view.position.x+=vel.x*.995f;
         l.view.position.y+=vel.y*.995f-Gravity*dt2;
         if(l.view.position.y<l.view.radius){l.view.position.y=l.view.radius;l.velocity.y=l.view.position.y;}
+        const float loadInverseMass=1.0f/std::max(0.1f,l.view.massKg/1000.0f);
         for(auto& p:w.particles)if(p.inverseMass>0){
-            Vec2 delta=sub(p.p,l.view.position);float d=length(delta),minD=l.view.radius+p.radius;
-            if(d<minD&&d>.0001f){Vec2 n=mul(delta,1/d);p.p=add(p.p,mul(n,(minD-d)*.24f));}
+            Vec2 delta=sub(p.p,l.view.position);
+            float d=length(delta),minD=l.view.radius+p.radius;
+            if(d<minD&&d>.0001f){
+                Vec2 normal=mul(delta,1.0f/d);
+                const float totalInverseMass=p.inverseMass+loadInverseMass;
+                const float penetration=minD-d;
+                p.p=add(p.p,mul(normal,penetration*(p.inverseMass/totalInverseMass)));
+                l.view.position=sub(l.view.position,mul(normal,penetration*(loadInverseMass/totalInverseMass)));
+                // Remove only the inward normal component so the load can settle
+                // on the member instead of tunnelling through it.
+                Vec2 relativeVelocity=sub(sub(l.view.position,l.velocity),sub(p.p,p.previous));
+                const float inward=dot(relativeVelocity,normal);
+                if(inward<0.0f){
+                    p.p=sub(p.p,mul(normal,inward*0.35f));
+                }
+            }
         }
     }
     for(int iteration=0;iteration<SolverIterations;++iteration){
