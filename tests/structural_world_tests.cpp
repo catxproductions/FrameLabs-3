@@ -78,6 +78,10 @@ void materialProfilesPreserveTheRequestedBendingOrder() {
     const auto& steel = materialProfile(MaterialKind::Steel);
     const auto& wood = materialProfile(MaterialKind::Wood);
     const auto& composite = materialProfile(MaterialKind::Composite);
+    require(steel.angularBendHertz < wood.angularBendHertz,
+            "steel should be more elastically flexible than wood");
+    require(wood.angularBendHertz < composite.angularBendHertz,
+            "wood should be more elastically flexible than composite");
     require(steel.breakBendRadians > wood.breakBendRadians,
             "steel should tolerate more bending than wood");
     require(wood.breakBendRadians > composite.breakBendRadians,
