@@ -3,7 +3,6 @@ name: Windows Desktop Build
 on:
   push:
     branches:
-      - feat/ui-foundation
       - main
     tags:
       - "v*"
