@@ -37,6 +37,15 @@ void starterFrameRemainsIntactAtRest() {
     require(world.brokenMemberCount() == 0, "starter frame fractured under its own weight");
 }
 
+void starterFrameRemainsIntactWithoutTestLoad() {
+    StructuralWorld world;
+    require(!world.loads().empty(), "starter frame should include its demonstration load");
+    const std::uint32_t loadId = world.loads().front().id;
+    require(world.removeLoad(loadId), "failed to remove demonstration load");
+    for (int i = 0; i < 120; ++i) world.step(1.0f / 120.0f);
+    require(world.brokenMemberCount() == 0, "unsupported starter frame fractured without an external load");
+}
+
 void loadsContactTheFullLengthOfLongMembers() {
     StructuralWorld world;
     world.clear();
@@ -78,7 +87,8 @@ int main() {
         }
     };
 
-    run("starter frame stability", starterFrameRemainsIntactAtRest);
+    run("starter frame stability with demonstration load", starterFrameRemainsIntactAtRest);
+    run("starter frame stability without demonstration load", starterFrameRemainsIntactWithoutTestLoad);
     run("continuous load contact", loadsContactTheFullLengthOfLongMembers);
     run("full-length heat brush", heatBrushReachesMemberEndpoints);
 
