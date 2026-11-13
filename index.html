@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#101020">
-<meta name="description" content="FrameLabs 3 — UI preview">
+<meta name="description" content="FrameLabs 3 — 2D structural stress and physics sandbox">
 <title>FrameLabs 3</title>
 <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
 <link rel="stylesheet" href="styles.css">
@@ -15,10 +15,11 @@
 <section class="screen menu-screen active" id="menuScreen">
  <div class="menu-rail">
   <div class="brand"><div class="mark"><i></i><i></i><i></i></div><div><small>ACIDIC PRODUCTIONS</small><h1>FrameLabs <b>3</b></h1></div></div>
-  <div class="menu-center"><p class="eyebrow"><i></i> DESKTOP SIMULATION PROJECT</p><p class="intro">A new space to build, experiment, and explore.</p>
+  <div class="menu-center"><p class="eyebrow"><i></i> DESKTOP SIMULATION PROJECT</p><p class="intro">A 2D structural physics sandbox. Build frames, apply loads, and watch materials bend, weaken, and fail.</p>
    <nav class="menu-nav" aria-label="Main menu">
     <button class="menu-btn primary" data-nav="workspace"><span class="menu-icon">▶</span><strong>Start</strong><span class="arrow">↗</span></button>
     <button class="menu-btn" data-nav="settings"><span class="menu-icon">⚙</span><strong>Settings</strong><span class="arrow">↗</span></button>
+    <a class="menu-btn" href="https://github.com/catxproductions/FrameLabs-3/releases/latest/download/FrameLabs3.exe"><span class="menu-icon">↓</span><strong>Download Windows build</strong><span class="arrow">↗</span></a>
     <button class="menu-btn" data-action="about"><span class="menu-icon">ⓘ</span><strong>About</strong><span class="arrow">↗</span></button>
    </nav>
   </div>
@@ -26,7 +27,7 @@
  </div>
  <main class="showcase">
   <header><span>◇ &nbsp; THE NEXT GENERATION</span><span>FL / 03 &nbsp; ━ &nbsp; 001</span></header>
-  <div class="showcase-copy"><p class="eyebrow">DESIGN. TEST. DISCOVER.</p><h2>Make room<br>for <em>possibility.</em></h2><p>A fresh foundation for a world of physical experiments. Create your space, test your ideas, and see what happens.</p><div class="steps"><div><b>01</b><small>CREATE</small></div><div><b>02</b><small>EXPERIMENT</small></div><div><b>03</b><small>DISCOVER</small></div></div></div>
+  <div class="showcase-copy"><p class="eyebrow">DESIGN. TEST. DISCOVER.</p><h2>Structures<br>under <em>stress.</em></h2><p>Build connected 2D structures, load them, and see stress move through every member. Steel bends. Wood yields. Composite snaps.</p><div class="steps"><div><b>01</b><small>CREATE</small></div><div><b>02</b><small>EXPERIMENT</small></div><div><b>03</b><small>DISCOVER</small></div></div></div>
   <div class="hero-art" aria-hidden="true">
    <div class="orbit one"></div><div class="orbit two"></div>
    <svg viewBox="0 0 760 650">
@@ -39,7 +40,7 @@
    </svg>
    <small class="coordinate">FIG. 001 &nbsp; / &nbsp; STRUCTURAL STUDY</small>
   </div>
-  <footer><span>ENGINEERING A NEW KIND OF SANDBOX</span><span>UI CONCEPT &nbsp; ●</span></footer>
+  <footer><span>ENGINEERING A NEW KIND OF SANDBOX</span><span>2D STRUCTURAL ENGINE &nbsp; ●</span></footer>
  </main>
 </section>
 
@@ -49,7 +50,7 @@
   <main class="viewport-column">
    <div class="view-heading"><div><small class="eyebrow">LIVE WORKSPACE</small><h2>Untitled environment</h2></div><div><span class="view-label">◇ &nbsp; EDITOR VIEW</span><button class="quiet-btn" data-action="reset-view">Reset view</button></div></div>
    <div class="viewport">
-    <div class="grid-bg"></div><div class="hud hud-top"><span>◇ &nbsp; SCENE VIEWPORT</span><span>CAM 01 &nbsp; / &nbsp; PERSPECTIVE</span></div>
+    <div class="grid-bg"></div><div class="hud hud-top"><span>◇ &nbsp; SCENE VIEWPORT</span><span>2D STRUCTURAL VIEW</span></div>
     <svg class="scene-art" viewBox="0 0 1000 630" role="img" aria-label="Illustrative structural framework in the scene preview">
      <defs><linearGradient id="sceneBeam" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#c4c0ff"/><stop offset="1" stop-color="#6260ab"/></linearGradient><filter id="sceneGlow"><feGaussianBlur stdDeviation="10"/></filter></defs>
      <ellipse cx="500" cy="500" rx="300" ry="55" fill="#6866bd" opacity=".12" filter="url(#sceneGlow)"/>
@@ -58,10 +59,10 @@
      <g fill="#c2bfff" stroke="#16162f" stroke-width="3"><circle cx="250" cy="205" r="8"/><circle cx="500" cy="65" r="8"/><circle cx="750" cy="205" r="8"/><circle cx="250" cy="318" r="7"/><circle cx="500" cy="318" r="7"/><circle cx="750" cy="318" r="7"/><circle cx="250" cy="430" r="8"/><circle cx="500" cy="430" r="8"/><circle cx="750" cy="430" r="8"/></g>
      <g fill="#9895d6" font-family="Arial,sans-serif" font-size="12" letter-spacing="2" opacity=".7"><text x="265" y="190">NODE 01</text><text x="515" y="53">NODE 02</text><text x="765" y="190">NODE 03</text><text x="265" y="462">BASE / A</text><text x="515" y="462">BASE / B</text><text x="765" y="462">BASE / C</text></g>
     </svg>
-    <div class="hud hud-bottom"><span>PREVIEW SCENE &nbsp; · &nbsp; GRID ON</span><span>WORLD ORIGIN &nbsp; 0.00 / 0.00 / 0.00</span></div>
+    <div class="hud hud-bottom"><span>STRUCTURAL PREVIEW &nbsp; · &nbsp; GRID ON</span><span>WORLD ORIGIN &nbsp; 0.00 / 0.00</span></div>
     <span class="axis x">X</span><span class="axis y">Y</span><span class="axis z">Z</span>
    </div>
-   <footer class="view-status"><span><i></i> READY &nbsp; / &nbsp; NO SIMULATION RUNNING</span><span>FRAMELABS 3 &nbsp; · &nbsp; UI PREVIEW</span></footer>
+   <footer class="view-status"><span><i></i> READY &nbsp; / &nbsp; NO SIMULATION RUNNING</span><span>FRAMELABS 3 &nbsp; · &nbsp; 2D STRUCTURAL LAB</span></footer>
   </main>
   <aside class="toolbar">
    <header><div><small class="eyebrow">CONTROL DECK</small><h2>Toolbar</h2></div><span>01 <i>/</i> 04</span></header>
