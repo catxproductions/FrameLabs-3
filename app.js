@@ -138,6 +138,8 @@
         <button class="tool" data-tool="member" aria-pressed="false"><span>╱</span><b>Connect</b><kbd>3</kbd></button>
         <button class="tool" data-tool="load" aria-pressed="false"><span>↓</span><b>Add load</b><kbd>4</kbd></button>
         <button class="tool" data-tool="heat" aria-pressed="false"><span>♨</span><b>Heat brush</b><kbd>5</kbd></button>
+        <button class="tool" data-tool="delete" aria-pressed="false"><span>⌫</span><b>Delete</b><kbd>6</kbd></button>
+        <button class="tool" data-tool="break" aria-pressed="false"><span>⚡</span><b>Break</b><kbd>7</kbd></button>
       </div>
       <p class="browser-hint" id="toolHint">Select nodes or members. Drag a node to reposition it.</p>
       <div class="browser-materials">
@@ -151,6 +153,8 @@
         <button type="button" id="pauseSimulation">Ⅱ Pause</button>
         <button type="button" id="resetSimulation">↻ Reset</button>
         <button type="button" id="stressToggle" aria-pressed="true">Stress: On</button>
+        <button type="button" id="gridSnapToggle" aria-pressed="false">Grid snap: Off</button>
+        <button type="button" id="clearScene" class="clear-scene-action">Clear scene</button>
       </div>`;
     const sceneSection = toolbar.querySelectorAll(".tool-section")[1];
     sceneSection.innerHTML = `
@@ -181,9 +185,12 @@
       .browser-sim-actions button{min-height:32px;padding:5px;border:1px solid rgba(141,139,205,.17);border-radius:2px;background:#0c0c14;color:#aaa8c7;font-size:8px}
       .browser-sim-actions button:hover{border-color:#7775c8;color:#fff}
       .browser-sim-actions button[aria-pressed="true"]{border-color:#7775c8;color:#d8d6ff}
+      .browser-sim-actions .clear-scene-action{grid-column:1/-1;border-color:rgba(190,104,111,.38);color:#d59a9f}
+      .browser-sim-actions .clear-scene-action:hover{border-color:#c87982;color:#ffe0e2}
       .browser-tool-grid .tool{min-width:0}
       #selectionSummary{min-height:52px}
-      @media(max-width:820px){.browser-sim-actions{grid-template-columns:repeat(3,minmax(0,1fr))}}
+      .workspace-screen .grid-bg{background-size:24px 24px;background-position:0 0}
+      @media(max-width:820px){.browser-sim-actions{grid-template-columns:repeat(2,minmax(0,1fr))}}
     `;
     document.head.appendChild(style);
 
@@ -220,7 +227,8 @@
     const state = {
       nodes: [], members: [], loads: [], nextNode: 1, nextMember: 1,
       tool: "select", material: "steel", firstNode: null, selectedNode: null,
-      selectedMember: null, dragging: null, paused: false, stress: true,
+      selectedMember: null, selectedLoad: null, dragging: null, paused: false,
+      stress: true, gridSnap: false, gridSize: 24,
       lastTime: 0, accumulator: 0, width: 0, height: 0, ground: 0
     };
 
@@ -229,7 +237,7 @@
     const makeNode = (x, y, pinned = false) => {
       const node = {
         id: state.nextNode++, x, y, px: x, py: y,
-        pinned, radius: 5.5, mass: 0.5, inverseMass: pinned ? 0 : 2
+        pinned, radius: 5.5, baseMass: 0.5, mass: 0.5, inverseMass: pinned ? 0 : 2
       };
       return node;
     };
@@ -244,6 +252,18 @@
 
     function refreshNodeInverseMass(node) {
       node.inverseMass = node.pinned ? 0 : 1 / Math.max(0.05, node.mass);
+    }
+
+    function recalculateNodeMasses() {
+      for (const node of state.nodes) {
+        node.mass = node.baseMass || 0.5;
+      }
+      for (const member of state.members) {
+        const endpointMass = Math.max(0, member.memberMass || 0) / 10;
+        member.a.mass += endpointMass;
+        member.b.mass += endpointMass;
+      }
+      for (const node of state.nodes) refreshNodeInverseMass(node);
     }
 
     function addMember(a, b, material) {
@@ -283,6 +303,7 @@
       state.nodes = []; state.members = []; state.loads = [];
       state.nextNode = 1; state.nextMember = 1;
       state.firstNode = null; state.selectedNode = null; state.selectedMember = null;
+      state.selectedLoad = null; state.dragging = null;
       const w = Math.max(420, canvas.clientWidth), h = Math.max(280, canvas.clientHeight);
       state.width = w; state.height = h;
       const x = [w * .28, w * .50, w * .72], y = [h * .72, h * .43, h * .15];
@@ -328,10 +349,10 @@
       return found;
     }
 
-    function closestMember(x, y, radius = 12) {
+    function closestMember(x, y, radius = 12, includeBroken = false) {
       let found = null, best = radius;
       for (const member of state.members) {
-        if (member.broken) continue;
+        if (member.broken && !includeBroken) continue;
         for (let i = 1; i < member.points.length; i++) {
           const a = member.points[i - 1], b = member.points[i];
           const dx = b.x - a.x, dy = b.y - a.y;
@@ -341,6 +362,57 @@
         }
       }
       return found;
+    }
+
+    function closestLoad(x, y, radius = 20) {
+      let found = null, best = radius;
+      for (const load of state.loads) {
+        const d = Math.hypot(load.x - x, load.y - y);
+        if (d < best) { best = d; found = load; }
+      }
+      return found;
+    }
+
+    function removeMember(member) {
+      if (!member) return false;
+      state.members = state.members.filter(item => item !== member);
+      if (state.selectedMember === member) state.selectedMember = null;
+      recalculateNodeMasses();
+      return true;
+    }
+
+    function removeNode(node) {
+      if (!node) return false;
+      state.members = state.members.filter(member => member.a !== node && member.b !== node);
+      state.nodes = state.nodes.filter(item => item !== node);
+      if (state.selectedNode === node) state.selectedNode = null;
+      if (state.selectedMember && !state.members.includes(state.selectedMember)) state.selectedMember = null;
+      recalculateNodeMasses();
+      return true;
+    }
+
+    function clearWorld() {
+      state.nodes = [];
+      state.members = [];
+      state.loads = [];
+      state.nextNode = 1;
+      state.nextMember = 1;
+      state.firstNode = null;
+      state.selectedNode = null;
+      state.selectedMember = null;
+      state.selectedLoad = null;
+      state.dragging = null;
+      updateInspector();
+      draw();
+    }
+
+    function snappedPoint(point) {
+      if (!state.gridSnap) return point;
+      const step = state.gridSize;
+      return {
+        x: Math.round(point.x / step) * step,
+        y: Math.round(point.y / step) * step
+      };
     }
 
     function updateInspector() {
@@ -362,6 +434,8 @@
       } else if (state.selectedMember) {
         summary.innerHTML = "<span>╱</span><div><b>" + state.selectedMember.material + " member</b><small>" +
           (state.selectedMember.broken ? "Failed" : "Stress " + Math.round(state.selectedMember.stress * 100) + "%") + "</small></div>";
+      } else if (state.selectedLoad) {
+        summary.innerHTML = "<span>↓</span><div><b>Test load</b><small>" + Math.round(state.selectedLoad.mass) + " kg</small></div>";
       } else {
         summary.innerHTML = "<span>＋</span><div><b>Nothing selected</b><small>Select a node or member to inspect it.</small></div>";
       }
@@ -379,7 +453,9 @@
         node: "Click empty space to place a new node.",
         member: "Click two existing nodes to connect them with the selected material.",
         load: "Click in the scene to drop a 220 kg test load.",
-        heat: "Hold or drag over a member to heat it and weaken its material response."
+        heat: "Hold or drag over a member to heat it and weaken its material response.",
+        delete: "Click a node, member, or test load to remove it. Deleting a node also removes its connected members.",
+        break: "Click a member to fracture it. The two separated pieces remain in the simulation."
       };
       document.getElementById("toolHint").textContent = hints[tool];
       canvas.style.cursor = tool === "select" ? "default" : tool === "heat" ? "cell" : "crosshair";
@@ -407,10 +483,46 @@
       event.currentTarget.setAttribute("aria-pressed", String(state.stress));
       draw();
     });
+    document.getElementById("gridSnapToggle").addEventListener("click", event => {
+      state.gridSnap = !state.gridSnap;
+      event.currentTarget.textContent = "Grid snap: " + (state.gridSnap ? "On" : "Off");
+      event.currentTarget.setAttribute("aria-pressed", String(state.gridSnap));
+      notify(state.gridSnap ? "Grid snapping enabled (24 px)." : "Grid snapping disabled.");
+    });
+    document.getElementById("clearScene").addEventListener("click", () => {
+      if (!window.confirm("Clear every node, member, and test load from this scene?")) return;
+      clearWorld();
+      notify("Scene cleared. Use Add node and Connect to build a new structure.");
+    });
 
     function pointerPosition(event) {
       const rect = canvas.getBoundingClientRect();
       return { x: event.clientX - rect.left, y: event.clientY - rect.top };
+    }
+
+    function breakMemberAt(x, y) {
+      const member = closestMember(x, y, 22);
+      if (!member) return null;
+      let closestSegment = 0;
+      let bestDistance = Infinity;
+      for (let i = 1; i < member.points.length; i++) {
+        const a = member.points[i - 1], b = member.points[i];
+        const dx = b.x - a.x, dy = b.y - a.y;
+        const t = clamp(((x - a.x) * dx + (y - a.y) * dy) /
+          Math.max(1, dx * dx + dy * dy), 0, 1);
+        const d = Math.hypot(x - (a.x + dx * t), y - (a.y + dy * t));
+        if (d < bestDistance) {
+          bestDistance = d;
+          closestSegment = i - 1;
+        }
+      }
+      member.broken = true;
+      member.breakSegment = closestSegment;
+      member.stress = Math.max(member.stress, 1.15);
+      state.selectedNode = null;
+      state.selectedLoad = null;
+      state.selectedMember = member;
+      return member;
     }
 
     canvas.addEventListener("contextmenu", event => {
@@ -419,11 +531,14 @@
       if (node) { node.pinned = !node.pinned; refreshNodeInverseMass(node); node.px = node.x; node.py = node.y; updateInspector(); draw(); }
     });
     canvas.addEventListener("pointerdown", event => {
-      const p = pointerPosition(event);
+      const rawPoint = pointerPosition(event);
+      const p = rawPoint;
       if (event.button === 2) return;
       canvas.setPointerCapture(event.pointerId);
       if (state.tool === "node") {
-        state.nodes.push(makeNode(p.x, p.y)); updateInspector(); draw(); return;
+        const place = snappedPoint(p);
+        state.nodes.push(makeNode(place.x, place.y));
+        updateInspector(); draw(); return;
       }
       if (state.tool === "member") {
         const node = closestNode(p.x, p.y, 22);
@@ -439,21 +554,53 @@
         return;
       }
       if (state.tool === "load") {
-        state.loads.push(makeLoad(p.x, p.y, 220));
+        const place = snappedPoint(p);
+        state.loads.push(makeLoad(place.x, place.y, 220));
         updateInspector(); draw(); return;
       }
       if (state.tool === "heat") { applyHeat(p.x, p.y, 20); return; }
+      if (state.tool === "delete") {
+        const node = closestNode(p.x, p.y);
+        const member = node ? null : closestMember(p.x, p.y, 16, true);
+        const load = node || member ? null : closestLoad(p.x, p.y, 22);
+        state.selectedNode = null;
+        state.selectedMember = null;
+        state.selectedLoad = null;
+        if (node) {
+          removeNode(node);
+          notify("Node and its connected members deleted.");
+        } else if (member) {
+          removeMember(member);
+          notify("Member deleted.");
+        } else if (load) {
+          state.loads = state.loads.filter(item => item !== load);
+          notify("Test load deleted.");
+        } else {
+          notify("Nothing to delete at that location.");
+        }
+        updateInspector(); draw(); return;
+      }
+      if (state.tool === "break") {
+        const member = breakMemberAt(p.x, p.y);
+        if (member) notify("Member fractured. Its two pieces are now free to move.");
+        else notify("Select an intact member to break.");
+        updateInspector(); draw(); return;
+      }
       const node = closestNode(p.x, p.y);
-      const member = node ? null : closestMember(p.x, p.y);
-      state.selectedNode = node; state.selectedMember = member;
+      const member = node ? null : closestMember(p.x, p.y, 12, true);
+      const load = node || member ? null : closestLoad(p.x, p.y, 20);
+      state.selectedNode = node;
+      state.selectedMember = member;
+      state.selectedLoad = load;
       if (node && !node.pinned) state.dragging = node;
       updateInspector(); draw();
     });
     canvas.addEventListener("pointermove", event => {
       const p = pointerPosition(event);
       if (state.dragging) {
-        state.dragging.x = p.x; state.dragging.y = p.y;
-        state.dragging.px = p.x; state.dragging.py = p.y;
+        const moveTo = snappedPoint(p);
+        state.dragging.x = moveTo.x; state.dragging.y = moveTo.y;
+        state.dragging.px = moveTo.x; state.dragging.py = moveTo.y;
         draw();
       } else if (state.tool === "heat" && event.buttons === 1) applyHeat(p.x, p.y, 8);
     });
@@ -683,21 +830,44 @@
           color=s<.5 ? "rgb("+Math.round(80+45*s*2)+","+Math.round(185+20*s*2)+","+Math.round(205-25*s*2)+")"
             : "rgb("+Math.round(125+125*(s-.5)*2)+","+Math.round(205-145*(s-.5)*2)+","+Math.round(180-130*(s-.5)*2)+")";
         }
+        const traceMember = () => {
+          if (member.broken && Number.isInteger(member.breakSegment)) {
+            const cut = clamp(member.breakSegment, 0, member.points.length - 2);
+            const left = member.points[cut], right = member.points[cut + 1];
+            const dx = right.x - left.x, dy = right.y - left.y;
+            const length = Math.max(0.001, Math.hypot(dx, dy));
+            const ux = dx / length, uy = dy / length;
+            const gap = 4;
+            ctx.beginPath();
+            ctx.moveTo(member.points[0].x, member.points[0].y);
+            for (let i = 1; i <= cut; i++) ctx.lineTo(member.points[i].x, member.points[i].y);
+            ctx.lineTo(left.x - ux * gap, left.y - uy * gap);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(right.x + ux * gap, right.y + uy * gap);
+            for (let i = cut + 2; i < member.points.length; i++) {
+              ctx.lineTo(member.points[i].x, member.points[i].y);
+            }
+            ctx.stroke();
+          } else {
+            ctx.beginPath();ctx.moveTo(member.points[0].x,member.points[0].y);
+            for(let i=1;i<member.points.length;i++)ctx.lineTo(member.points[i].x,member.points[i].y);
+            ctx.stroke();
+          }
+        };
         ctx.strokeStyle=color;ctx.lineWidth=6;ctx.lineCap="round";ctx.lineJoin="round";
-        ctx.beginPath();ctx.moveTo(member.points[0].x,member.points[0].y);
-        for(let i=1;i<member.points.length;i++)ctx.lineTo(member.points[i].x,member.points[i].y);
-        ctx.stroke();
+        traceMember();
         if (member.temperature>80 && !member.broken) {
-          ctx.strokeStyle="rgba(255,139,78,.28)";ctx.lineWidth=12;ctx.stroke();
+          ctx.strokeStyle="rgba(255,139,78,.28)";ctx.lineWidth=12;traceMember();
         }
         if (member===state.selectedMember) {
           ctx.strokeStyle="#f0efff";ctx.lineWidth=2;ctx.setLineDash([5,4]);
-          ctx.stroke();ctx.setLineDash([]);
+          traceMember();ctx.setLineDash([]);
         }
       }
       for (const load of state.loads) {
         ctx.fillStyle="#e8ad70";ctx.beginPath();ctx.arc(load.x,load.y,load.radius,0,Math.PI*2);ctx.fill();
-        ctx.strokeStyle="#f4d2a9";ctx.lineWidth=1.5;ctx.stroke();
+        ctx.strokeStyle=load===state.selectedLoad?"#ffffff":"#f4d2a9";ctx.lineWidth=load===state.selectedLoad?3:1.5;ctx.stroke();
         ctx.fillStyle="#f1e8d9";ctx.font="10px system-ui";ctx.fillText(Math.round(load.mass)+" kg",load.x+14,load.y-9);
       }
       for (const node of state.nodes) {
@@ -745,8 +915,11 @@
       if(event.key==="Escape" && currentScreen==="workspace"){showScreen("menu");return;}
       if(event.key==="Escape" && currentScreen==="settings"){showScreen(returnScreen);return;}
       if(currentScreen!=="workspace" || event.ctrlKey || event.metaKey || event.altKey) return;
-      const shortcuts={"1":"select","2":"node","3":"member","4":"load","5":"heat"};
+      const shortcuts={"1":"select","2":"node","3":"member","4":"load","5":"heat","6":"delete","7":"break"};
       if(shortcuts[event.key]) setTool(shortcuts[event.key]);
+      if(event.key.toLowerCase()==="g" && !/INPUT|SELECT|TEXTAREA/.test(event.target.tagName)) {
+        document.getElementById("gridSnapToggle").click();
+      }
       if(event.code==="Space" && !/INPUT|SELECT|TEXTAREA/.test(event.target.tagName)) {
         event.preventDefault();
         document.getElementById("pauseSimulation").click();
