@@ -91,7 +91,7 @@ const MaterialProfile& materialProfile(MaterialKind kind) noexcept {
     // little, and composite is deliberately stiff/brittle. Heat reduces both
     // bending stiffness and failure thresholds.
     static const MaterialProfile profiles[] = {
-        {"steel","Steel",{120,202,255},7.8f,15.0f,9.0f,25.0f,18.0f,0.20f,0.34f,0.22f,0.72f,0.78f,4.0f},
+        {"steel","Steel",{120,202,255},7.8f,15.0f,9.0f,25.0f,18.0f,0.20f,0.55f,0.22f,0.72f,0.78f,4.0f},
         {"wood","Wood",{220,167,106},0.68f,23.0f,13.0f,7.0f,5.0f,0.055f,0.105f,0.055f,0.82f,0.92f,2.5f},
         {"composite","Composite",{178,151,230},1.25f,31.0f,18.0f,11.0f,8.0f,0.022f,0.060f,0.028f,0.90f,0.86f,3.2f},
         {"concrete","Concrete",{180,190,205},2.35f,27.0f,15.0f,14.0f,10.0f,0.012f,0.035f,0.018f,0.88f,0.90f,2.0f}
