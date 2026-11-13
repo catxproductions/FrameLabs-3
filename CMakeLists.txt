@@ -39,5 +39,7 @@ endif()
 set_target_properties(FrameLabs3 PROPERTIES
   OUTPUT_NAME "FrameLabs3"
   RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
+  RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_BINARY_DIR}/bin"
+  RUNTIME_OUTPUT_DIRECTORY_DEBUG "${CMAKE_BINARY_DIR}/bin"
 )
 message(STATUS "FrameLabs 3: native 2D structural physics / static Windows executable")
