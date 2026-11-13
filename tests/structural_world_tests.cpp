@@ -1,12 +1,16 @@
 #include "framelabs/StructuralWorld.hpp"
 
-#include <cassert>
 #include <cmath>
 #include <iostream>
+#include <stdexcept>
 
 using namespace framelabs;
 
 namespace {
+void require(bool condition, const char* message) {
+    if (!condition) throw std::runtime_error(message);
+}
+
 const LoadView* findLoad(const StructuralWorld& world, std::uint32_t id) {
     for (const auto& load : world.loads()) {
         if (load.id == id) return &load;
@@ -16,9 +20,9 @@ const LoadView* findLoad(const StructuralWorld& world, std::uint32_t id) {
 
 void starterFrameRemainsIntactAtRest() {
     StructuralWorld world;
-    assert(world.memberCount() == 16);
+    require(world.memberCount() == 16, "starter frame should contain 16 members");
     for (int i = 0; i < 120; ++i) world.step(1.0f / 120.0f);
-    assert(world.brokenMemberCount() == 0);
+    require(world.brokenMemberCount() == 0, "starter frame fractured under its own weight");
 }
 
 void loadsContactTheFullLengthOfLongMembers() {
@@ -26,12 +30,12 @@ void loadsContactTheFullLengthOfLongMembers() {
     world.clear();
     const NodeId a = world.addNode({1.0f, 5.0f}, true);
     const NodeId b = world.addNode({5.0f, 5.0f}, true);
-    assert(world.addMember(a, b, MaterialKind::Steel) != 0);
+    require(world.addMember(a, b, MaterialKind::Steel) != 0, "failed to create test beam");
     const std::uint32_t loadId = world.addLoad({2.2f, 6.2f}, 220.0f);
     for (int i = 0; i < 240; ++i) world.step(1.0f / 120.0f);
     const LoadView* load = findLoad(world, loadId);
-    assert(load != nullptr);
-    assert(load->position.y > 5.15f);
+    require(load != nullptr, "test load disappeared");
+    require(load->position.y > 5.15f, "load passed through the middle of a long beam");
 }
 
 void heatBrushReachesMemberEndpoints() {
@@ -40,20 +44,25 @@ void heatBrushReachesMemberEndpoints() {
     const NodeId a = world.addNode({0.0f, 0.0f}, true);
     const NodeId b = world.addNode({4.0f, 0.0f}, true);
     const MemberId memberId = world.addMember(a, b, MaterialKind::Steel);
-    assert(memberId != 0);
+    require(memberId != 0, "failed to create heat test member");
     world.applyHeat({0.1f, 0.0f}, 0.5f, 500.0f, 1.0f);
     bool heated = false;
     for (const auto& member : world.members()) {
         if (member.id == memberId) heated = member.temperatureC > 20.0f;
     }
-    assert(heated);
+    require(heated, "heat brush did not reach the member endpoint");
 }
 }
 
 int main() {
-    starterFrameRemainsIntactAtRest();
-    loadsContactTheFullLengthOfLongMembers();
-    heatBrushReachesMemberEndpoints();
-    std::cout << "FrameLabs 3 structural world regression tests passed.\n";
-    return 0;
+    try {
+        starterFrameRemainsIntactAtRest();
+        loadsContactTheFullLengthOfLongMembers();
+        heatBrushReachesMemberEndpoints();
+        std::cout << "FrameLabs 3 structural world regression tests passed.\n";
+        return 0;
+    } catch (const std::exception& error) {
+        std::cerr << "FrameLabs 3 structural world regression test failed: " << error.what() << '\n';
+        return 1;
+    }
 }
