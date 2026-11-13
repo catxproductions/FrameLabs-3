@@ -143,7 +143,13 @@ struct StructuralWorld::Impl {
             MemberView v;
             v.id=m.id; v.nodeA=m.a; v.nodeB=m.b; v.material=m.material; v.role=m.role;
             v.start=a->p; v.end=b->p; v.restLength=m.restLength;
-            v.currentLength=distance(a->p,b->p);
+            // Measure axial extension along the member's centerline. The
+            // endpoint chord shortens during bending and must not be mistaken
+            // for compressive material strain.
+            v.currentLength=0.0f;
+            for(std::size_t i=1;i<m.particles.size();++i){
+                v.currentLength+=distance(particles[m.particles[i-1]].p,particles[m.particles[i]].p);
+            }
             v.axialStrain=(v.currentLength-m.restLength)/std::max(.001f,m.restLength);
             v.stressRatio=m.stress; v.damage=m.damage; v.temperatureC=m.temperature;
             v.maxBendRadians=m.bend; v.yielding=m.stress>.72f; v.broken=m.broken;
@@ -346,7 +352,10 @@ void StructuralWorld::step(float dt) {
     for(auto& m:w.memberData)if(!m.broken){
         const auto& profile=materialProfile(m.material);
         const auto* a=w.particleFor(m.a);const auto* b=w.particleFor(m.b);if(!a||!b)continue;
-        const float span=distance(a->p,b->p);
+        float span=0.0f;
+        for(std::size_t i=1;i<m.particles.size();++i){
+            span+=distance(w.particles[m.particles[i-1]].p,w.particles[m.particles[i]].p);
+        }
         const float strain=std::fabs(span-m.restLength)/std::max(.001f,m.restLength);
         float maxAngle=0;
         for(std::size_t i=1;i+1<m.particles.size();++i){
