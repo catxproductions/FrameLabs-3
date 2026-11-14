@@ -901,7 +901,8 @@
       const wb0=(b0.inverseMass||0)*(1-u)*(1-u),wb1=(b1.inverseMass||0)*u*u;
       const sum=wa0+wa1+wb0+wb1;if(sum<=1e-8)return;
       // Keep contact projection out of Verlet velocity and resolve gently.
-      const push=Math.min(1.5,(minimum-d)*0.24);
+      // A small positional correction is enough; large repeated pushes destabilize beam networks.
+      const push=Math.min(0.35,(minimum-d)*0.12);
       const corrections=[
         [-nx*push*wa0/sum,-ny*push*wa0/sum,a0],
         [-nx*push*wa1/sum,-ny*push*wa1/sum,a1],
@@ -1001,7 +1002,6 @@
             }
           }
         }
-        solveMemberMemberContacts();
         solveLoadLoadContacts();
         for (const load of state.loads) {
           for (const member of state.members) {
@@ -1009,6 +1009,11 @@
           }
         }
       }
+
+      // Resolve intact-member contacts once after the structural constraints settle.
+      // Running this inside every constraint iteration made contact and beam rigidity
+      // repeatedly undo one another, injecting large positional corrections.
+      solveMemberMemberContacts();
 
       for (const member of state.members) {
         if (member.broken) continue;
