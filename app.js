@@ -303,6 +303,239 @@
       return state.members[state.members.length - 1];
     }
 
+
+    // Convert build-time member crossings into shared structural joints before
+    // physics starts. This prevents two beams that begin in the same space from
+    // being treated as unrelated bodies that must push one another apart.
+    function memberIntersection(first, second) {
+      const ax = first.a.x, ay = first.a.y;
+      const rx = first.b.x - ax, ry = first.b.y - ay;
+      const cx = second.a.x, cy = second.a.y;
+      const sx = second.b.x - cx, sy = second.b.y - cy;
+      const denominator = rx * sy - ry * sx;
+      const scale = Math.max(1, Math.hypot(rx, ry) * Math.hypot(sx, sy));
+      if (Math.abs(denominator) <= 1e-8 * scale) return null;
+
+      const qx = cx - ax, qy = cy - ay;
+      const t = (qx * sy - qy * sx) / denominator;
+      const u = (qx * ry - qy * rx) / denominator;
+      const epsilon = 1e-7;
+      if (t < -epsilon || t > 1 + epsilon || u < -epsilon || u > 1 + epsilon) return null;
+      const clampedT = clamp(t, 0, 1);
+      return {
+        t: clampedT,
+        u: clamp(u, 0, 1),
+        x: ax + rx * clampedT,
+        y: ay + ry * clampedT
+      };
+    }
+
+    function projectMemberParameter(member, point) {
+      const dx = member.b.x - member.a.x;
+      const dy = member.b.y - member.a.y;
+      const lengthSquared = dx * dx + dy * dy;
+      if (lengthSquared < 1e-8) return 0;
+      return clamp(((point.x - member.a.x) * dx + (point.y - member.a.y) * dy) / lengthSquared, 0, 1);
+    }
+
+    function createMemberFragment(source, a, b, startT, endT, keepOriginalId) {
+      const span = distance(a, b);
+      if (span < 0.5 || endT - startT < 1e-5) return null;
+      const rest = Math.max(0.5, source.rest * (endT - startT));
+      const originalMass = source.memberMass || (materialProfiles[source.material].density * source.rest / 200);
+      const memberMass = Math.max(0.01, originalMass * (endT - startT));
+      const points = [a];
+      for (let i = 1; i < 5; i++) {
+        const t = i / 5;
+        const x = a.x + (b.x - a.x) * t;
+        const y = a.y + (b.y - a.y) * t;
+        points.push({
+          x, y, px: x, py: y, radius: 2.6,
+          mass: memberMass / 5,
+          inverseMass: 1 / Math.max(0.05, memberMass / 5),
+          material: source.material
+        });
+      }
+      points.push(b);
+      return {
+        id: keepOriginalId ? source.id : state.nextMember++,
+        a, b, points, material: source.material,
+        rest, segmentRest: rest / 5, broken: false,
+        stress: source.stress || 0,
+        damage: source.damage || 0,
+        fatigue: source.fatigue || 0,
+        temperature: source.temperature || 20,
+        memberMass
+      };
+    }
+
+    function connectBuildIntersections() {
+      const candidates = [];
+      const originalMembers = state.members.slice();
+
+      for (let i = 0; i < originalMembers.length; i++) {
+        const first = originalMembers[i];
+        if (first.broken) continue;
+        for (let j = i + 1; j < originalMembers.length; j++) {
+          const second = originalMembers[j];
+          if (second.broken) continue;
+          if (first.a === second.a || first.a === second.b ||
+              first.b === second.a || first.b === second.b) continue;
+
+          const hit = memberIntersection(first, second);
+          if (hit) candidates.push({ first, second, ...hit });
+        }
+      }
+
+      if (!candidates.length) return 0;
+
+      const nodeAliases = new Map();
+      const splitEvents = new Map();
+      const connectedJoints = new Set();
+      const endpointSnapDistance = 5;
+      const reuseNodeDistance = 4;
+
+      const resolveNode = (node) => {
+        let current = node;
+        while (nodeAliases.has(current)) current = nodeAliases.get(current);
+        return current;
+      };
+
+      const aliasNode = (from, to) => {
+        const source = resolveNode(from);
+        const target = resolveNode(to);
+        if (source !== target) nodeAliases.set(source, target);
+      };
+
+      const registerMemberJoint = (member, joint) => {
+        const a = resolveNode(member.a);
+        const b = resolveNode(member.b);
+        const span = distance(a, b);
+        const t = projectMemberParameter({ a, b }, joint);
+        const distanceFromA = t * span;
+        const distanceFromB = (1 - t) * span;
+
+        if (distanceFromA <= endpointSnapDistance) {
+          aliasNode(a, joint);
+          return;
+        }
+        if (distanceFromB <= endpointSnapDistance) {
+          aliasNode(b, joint);
+          return;
+        }
+
+        if (!splitEvents.has(member)) splitEvents.set(member, []);
+        splitEvents.get(member).push({ t, node: joint });
+      };
+
+      for (const candidate of candidates) {
+        const { first, second, x, y } = candidate;
+        const hitPoint = { x, y };
+        const nearby = [];
+
+        for (const member of [first, second]) {
+          const span = distance(member.a, member.b);
+          const t = member === first ? candidate.t : candidate.u;
+          if (t * span <= endpointSnapDistance) nearby.push(member.a);
+          if ((1 - t) * span <= endpointSnapDistance) nearby.push(member.b);
+        }
+
+        for (const node of state.nodes) {
+          const resolved = resolveNode(node);
+          if (resolved === node && distance(node, hitPoint) <= reuseNodeDistance) nearby.push(node);
+        }
+
+        let joint = null;
+        if (nearby.length) {
+          const unique = [...new Set(nearby.map(resolveNode))];
+          unique.sort((a, b) => {
+            const pinPriority = Number(!!b.pinned) - Number(!!a.pinned);
+            return pinPriority || distance(a, hitPoint) - distance(b, hitPoint);
+          });
+          joint = unique[0];
+          for (let i = 1; i < unique.length; i++) aliasNode(unique[i], joint);
+        } else {
+          const onFloor = y >= state.ground - 2;
+          joint = makeNode(x, onFloor ? state.ground : y, false, onFloor);
+          state.nodes.push(joint);
+        }
+
+        joint = resolveNode(joint);
+        connectedJoints.add(joint);
+        registerMemberJoint(first, joint);
+        registerMemberJoint(second, joint);
+      }
+
+      // Merge nodes that were already at the same intersection, then update every
+      // member endpoint so all beams at a junction reference the exact same object.
+      for (const member of originalMembers) {
+        member.a = resolveNode(member.a);
+        member.b = resolveNode(member.b);
+        member.points[0] = member.a;
+        member.points[member.points.length - 1] = member.b;
+      }
+      state.nodes = [...new Set(state.nodes.map(resolveNode))];
+
+      const rebuiltMembers = [];
+      for (const member of originalMembers) {
+        const events = (splitEvents.get(member) || [])
+          .map(event => ({ ...event, node: resolveNode(event.node) }))
+          .filter(event => event.node !== member.a && event.node !== member.b)
+          .sort((a, b) => a.t - b.t);
+
+        if (!events.length || member.broken) {
+          rebuiltMembers.push(member);
+          continue;
+        }
+
+        const uniqueEvents = [];
+        for (const event of events) {
+          const previous = uniqueEvents[uniqueEvents.length - 1];
+          if (previous && (previous.node === event.node || Math.abs(previous.t - event.t) < 1e-4)) {
+            if (previous.node !== event.node) aliasNode(event.node, previous.node);
+            continue;
+          }
+          uniqueEvents.push(event);
+        }
+
+        const stops = [
+          { t: 0, node: member.a },
+          ...uniqueEvents.map(event => ({ t: event.t, node: resolveNode(event.node) })),
+          { t: 1, node: member.b }
+        ];
+
+        let madeFragment = false;
+        for (let i = 1; i < stops.length; i++) {
+          const start = stops[i - 1], end = stops[i];
+          const fragment = createMemberFragment(
+            member, resolveNode(start.node), resolveNode(end.node),
+            start.t, end.t, !madeFragment
+          );
+          if (!fragment) continue;
+          rebuiltMembers.push(fragment);
+          madeFragment = true;
+        }
+        if (!madeFragment) rebuiltMembers.push(member);
+      }
+
+      // Apply any final same-position aliases created while deduplicating events.
+      state.members = rebuiltMembers.map(member => {
+        member.a = resolveNode(member.a);
+        member.b = resolveNode(member.b);
+        member.points[0] = member.a;
+        member.points[member.points.length - 1] = member.b;
+        return member;
+      });
+      state.nodes = [...new Set(state.nodes.map(resolveNode))];
+      recalculateNodeMasses();
+      state.firstNode = null;
+      state.selectedNode = null;
+      state.selectedMember = null;
+      state.selectedLoad = null;
+      updateInspector();
+      return connectedJoints.size;
+    }
+
     function resizeCanvas() {
       const rect = viewport.getBoundingClientRect();
       if (!rect.width || !rect.height) return;
@@ -496,10 +729,15 @@
           notify("Build a structure first: add at least two nodes and connect them with a member.");
           return;
         }
+        // Snapshot first so Reset Structure restores the exact user-authored build.
+        // The automatic joints are generated only for the live test instance.
         state.testSnapshot = captureBuildSnapshot();
+        const connectedJoints = connectBuildIntersections();
         state.testMode = true;
         state.paused = false;
-        notify("Test started. Reset Structure will restore this exact build.");
+        notify(connectedJoints
+          ? "Test started. Automatically connected " + connectedJoints + " intersecting joint(s)."
+          : "Test started. Reset Structure will restore this exact build.");
       } else {
         state.paused = !state.paused;
       }
