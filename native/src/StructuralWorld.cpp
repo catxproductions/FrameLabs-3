@@ -196,11 +196,16 @@ void resolveMemberSegmentContact(Particle& a0, Particle& a1,
     const float wb0=b0.inverseMass*(1.0f-tc)*(1.0f-tc), wb1=b1.inverseMass*tc*tc;
     const float sum=wa0+wa1+wb0+wb1;
     if(sum<=1e-8f) return;
-    const float penetration=(minimum-d)*0.82f;
-    a0.p=sub(a0.p,mul(normal,penetration*wa0/sum));
-    a1.p=sub(a1.p,mul(normal,penetration*wa1/sum));
-    b0.p=add(b0.p,mul(normal,penetration*wb0/sum));
-    b1.p=add(b1.p,mul(normal,penetration*wb1/sum));
+    // Keep contact projection out of Verlet velocity; use small iterative corrections.
+    const float penetration=std::min(0.03f,(minimum-d)*0.24f);
+    const Vec2 da0=mul(normal,-penetration*wa0/sum);
+    const Vec2 da1=mul(normal,-penetration*wa1/sum);
+    const Vec2 db0=mul(normal, penetration*wb0/sum);
+    const Vec2 db1=mul(normal, penetration*wb1/sum);
+    a0.p=add(a0.p,da0); a0.previous=add(a0.previous,da0);
+    a1.p=add(a1.p,da1); a1.previous=add(a1.previous,da1);
+    b0.p=add(b0.p,db0); b0.previous=add(b0.previous,db0);
+    b1.p=add(b1.p,db1); b1.previous=add(b1.previous,db1);
 }
 
 
@@ -298,7 +303,7 @@ void StructuralWorld::clear() {
 NodeId StructuralWorld::addNode(Vec2 p,bool pinned) {
     const NodeId id=impl_->nextNode++;
     Particle particle;
-    const bool floorBase = p.y <= particle.radius + 0.10f;
+    const bool floorBase = p.y <= particle.radius + 0.005f;
     particle.p=p;
     if (floorBase) particle.p.y = particle.radius;
     particle.previous=particle.p;
