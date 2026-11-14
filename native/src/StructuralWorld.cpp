@@ -187,7 +187,7 @@ const MaterialProfile& materialProfile(MaterialKind kind) noexcept {
     // little, and composite is deliberately stiff/brittle. Heat reduces both
     // bending stiffness and failure thresholds.
     static const MaterialProfile profiles[] = {
-        {"steel","Steel",{120,202,255},7.8f,15.0f,9.0f,0.975f,25.0f,18.0f,0.20f,0.95f,0.22f,0.72f,0.78f,4.0f,0.50f,0.30f,0.16f,0.78f,0.78f},
+        {"steel","Steel",{120,202,255},7.8f,15.0f,9.0f,0.975f,25.0f,18.0f,0.20f,0.95f,0.12f,0.72f,0.78f,4.0f,0.50f,0.30f,0.16f,0.78f,0.78f},
         {"wood","Wood",{220,167,106},0.68f,23.0f,13.0f,0.985f,7.0f,5.0f,0.055f,0.105f,0.055f,0.82f,0.92f,2.5f,0.76f,0.49f,0.12f,0.62f,0.58f},
         {"composite","Composite",{178,151,230},1.25f,31.0f,18.0f,0.994f,11.0f,8.0f,0.022f,0.060f,0.028f,0.90f,0.86f,3.2f,0.62f,0.38f,0.10f,0.45f,0.32f},
         {"explosive-composite","Explosive Composite",{214,138,85},1.35f,31.0f,18.0f,0.994f,11.0f,8.0f,0.022f,0.060f,0.028f,0.48f,0.90f,2.8f,0.62f,0.38f,0.10f,0.42f,0.30f},
@@ -678,9 +678,6 @@ void StructuralWorld::step(float dt) {
         for(std::size_t i=1;i<m.particles.size();++i){
             span+=distance(w.particles[m.particles[i-1]].p,w.particles[m.particles[i]].p);
         }
-        const float strain=m.role==MemberRole::Rope
-            ? std::max(0.0f,span-m.restLength)/std::max(.001f,m.restLength)
-            : std::fabs(span-m.restLength)/std::max(.001f,m.restLength);
         float maxAngle=0;
         for(std::size_t i=1;i+1<m.particles.size();++i){
             Vec2 d0=sub(w.particles[m.particles[i]].p,w.particles[m.particles[i-1]].p);
