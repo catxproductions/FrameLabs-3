@@ -198,8 +198,13 @@ const MaterialProfile& materialProfile(MaterialKind kind) noexcept {
 }
 
 
-void resolveMemberSegmentContact(Particle& a0, Particle& a1,
-                                 Particle& b0, Particle& b1) {
+void resolveMemberSegmentContact(MemberData& first, std::size_t firstSegment,
+                                 MemberData& second, std::size_t secondSegment,
+                                 std::vector<Particle>& particles) {
+    Particle& a0=particles[first.particles[firstSegment]];
+    Particle& a1=particles[first.particles[firstSegment+1]];
+    Particle& b0=particles[second.particles[secondSegment]];
+    Particle& b1=particles[second.particles[secondSegment+1]];
     const Vec2 u=sub(a1.p,a0.p), v=sub(b1.p,b0.p), w=sub(a0.p,b0.p);
     const float aa=dot(u,u), bb=dot(u,v), cc=dot(v,v);
     const float dd=dot(u,w), ee=dot(v,w), denom=aa*cc-bb*bb;
@@ -222,8 +227,11 @@ void resolveMemberSegmentContact(Particle& a0, Particle& a1,
     const float wb0=b0.inverseMass*(1.0f-tc)*(1.0f-tc), wb1=b1.inverseMass*tc*tc;
     const float sum=wa0+wa1+wb0+wb1;
     if(sum<=1e-8f) return;
-    // Keep contact projection out of Verlet velocity; use small iterative corrections.
-    const float penetration=std::min(0.03f,(minimum-d)*0.24f);
+
+    // Contacts must move the connected member, not just its interior sample
+    // particles; beam-shape constraints otherwise pull those samples straight
+    // back through the other beam on the next solver iteration.
+    const float penetration=std::min(0.08f,(minimum-d)*0.5f);
     const Vec2 da0=mul(normal,-penetration*wa0/sum);
     const Vec2 da1=mul(normal,-penetration*wa1/sum);
     const Vec2 db0=mul(normal, penetration*wb0/sum);
@@ -232,8 +240,23 @@ void resolveMemberSegmentContact(Particle& a0, Particle& a1,
     a1.p=add(a1.p,da1); a1.previous=add(a1.previous,da1);
     b0.p=add(b0.p,db0); b0.previous=add(b0.previous,db0);
     b1.p=add(b1.p,db1); b1.previous=add(b1.previous,db1);
-}
 
+    const auto propagateToMemberEnds = [&](MemberData& member, Vec2 segmentCorrection) {
+        Particle& start=particles[member.particles.front()];
+        Particle& finish=particles[member.particles.back()];
+        const float startWeight=start.inverseMass, finishWeight=finish.inverseMass;
+        const float endpointWeight=startWeight+finishWeight;
+        if(endpointWeight<=1e-8f) return;
+        const Vec2 startMove=mul(segmentCorrection, startWeight/endpointWeight);
+        const Vec2 finishMove=mul(segmentCorrection, finishWeight/endpointWeight);
+        start.p=add(start.p,startMove); start.previous=add(start.previous,startMove);
+        finish.p=add(finish.p,finishMove); finish.previous=add(finish.previous,finishMove);
+    };
+    const Vec2 firstCorrection=add(mul(da0,1.0f-sc),mul(da1,sc));
+    const Vec2 secondCorrection=add(mul(db0,1.0f-tc),mul(db1,tc));
+    propagateToMemberEnds(first,firstCorrection);
+    propagateToMemberEnds(second,secondCorrection);
+}
 
 void resolveLoadLoadContact(LoadData& a, LoadData& b) {
     const Vec2 delta=sub(b.view.position,a.view.position);
@@ -616,8 +639,7 @@ void StructuralWorld::step(float dt) {
                 if(first.a==second.a||first.a==second.b||first.b==second.a||first.b==second.b) continue;
                 for(std::size_t i=1;i<first.particles.size();++i)
                     for(std::size_t j=1;j<second.particles.size();++j)
-                        resolveMemberSegmentContact(w.particles[first.particles[i-1]],w.particles[first.particles[i]],
-                            w.particles[second.particles[j-1]],w.particles[second.particles[j]]);
+                        resolveMemberSegmentContact(first,i-1,second,j-1,w.particles);
             }
         }
     }
