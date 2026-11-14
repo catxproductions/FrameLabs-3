@@ -46,6 +46,23 @@ void starterFrameRemainsIntactWithoutTestLoad() {
     require(world.brokenMemberCount() == 0, "unsupported starter frame fractured without an external load");
 }
 
+void nodesPlacedOnGroundBecomeFloorBases() {
+    StructuralWorld world;
+    world.clear();
+    const NodeId floorNode = world.addNode({2.0f, 0.02f}, false);
+    const NodeId elevatedNode = world.addNode({4.0f, 1.0f}, false);
+    bool foundFloorBase = false;
+    bool foundDynamicNode = false;
+    for (const auto& node : world.nodes()) {
+        if (node.id == floorNode) {
+            foundFloorBase = node.pinned && std::fabs(node.position.y - 0.075f) < 1e-5f;
+        }
+        if (node.id == elevatedNode) foundDynamicNode = !node.pinned;
+    }
+    require(foundFloorBase, "node placed at the floor was not snapped down and pinned");
+    require(foundDynamicNode, "elevated node was incorrectly pinned as a floor base");
+}
+
 void loadsContactTheFullLengthOfLongMembers() {
     StructuralWorld world;
     world.clear();
@@ -199,6 +216,7 @@ int main() {
 
     run("starter frame stability with demonstration load", starterFrameRemainsIntactAtRest);
     run("starter frame stability without demonstration load", starterFrameRemainsIntactWithoutTestLoad);
+    run("nodes placed on the floor become glued base nodes", nodesPlacedOnGroundBecomeFloorBases);
     run("continuous load contact", loadsContactTheFullLengthOfLongMembers);
     run("full-length heat brush", heatBrushReachesMemberEndpoints);
     run("material bending hierarchy and contact profiles", materialProfilesPreserveTheRequestedBendingOrder);
