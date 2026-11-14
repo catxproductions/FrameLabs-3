@@ -163,6 +163,38 @@ void separateStructuralMembersCollide() {
             "crossing structural members passed through each other");
 }
 
+void gridCellHasTheConfiguredPhysicalArea() {
+    require(std::fabs(GridCellAreaSquareFeet - 5.0f) < 1e-6f,
+            "one grid cell should represent exactly five square feet");
+    require(std::fabs(GridCellSideFeet * GridCellSideFeet - GridCellAreaSquareFeet) < 1e-5f,
+            "grid cell side length does not match its area");
+    require(std::fabs(MetersPerWorldUnit - GridCellSideFeet * 0.3048f) < 1e-6f,
+            "native world-unit conversion is inconsistent with the grid scale");
+}
+
+void ropeSagsAndActsAsATensionOnlyMember() {
+    StructuralWorld world;
+    world.clear();
+    const NodeId left = world.addNode({2.0f, 5.0f}, true);
+    const NodeId right = world.addNode({8.0f, 5.0f}, true);
+    const MemberId ropeId = world.addMember(left, right, MaterialKind::Steel, MemberRole::Rope);
+    require(ropeId != 0, "failed to create rope member");
+
+    for (int i = 0; i < 240; ++i) world.step(1.0f / 120.0f);
+
+    const MemberView* rope = nullptr;
+    for (const auto& member : world.members()) {
+        if (member.id == ropeId) rope = &member;
+    }
+    require(rope != nullptr, "rope member disappeared");
+    require(rope->role == MemberRole::Rope, "rope lost its member role");
+    float lowestY = std::numeric_limits<float>::max();
+    for (const auto& segment : rope->segments) lowestY = std::min(lowestY, segment.center.y);
+    require(lowestY < 4.8f, "rope did not sag between its pinned endpoints");
+    require(!rope->broken, "a slack rope failed under its own weight");
+    require(rope->stressRatio < 1.0f, "a slack rope incorrectly registered bending failure");
+}
+
 void fixedSubstepsAreIndependentOfRenderStepGrouping() {
     StructuralWorld oneLargeStep;
     StructuralWorld twoSmallSteps;
@@ -226,6 +258,8 @@ int main() {
     run("material bending hierarchy and contact profiles", materialProfilesPreserveTheRequestedBendingOrder);
     run("composite ignition and explosion effects", compositeEffectsAreRestrictedToTheirMatchingMaterials);
     run("structural members collide with each other", separateStructuralMembersCollide);
+    run("five-square-foot physical grid scale", gridCellHasTheConfiguredPhysicalArea);
+    run("rope sag and tension-only mechanics", ropeSagsAndActsAsATensionOnlyMember);
     run("fixed-step determinism across render-step grouping", fixedSubstepsAreIndependentOfRenderStepGrouping);
     run("finite state during extended simulation", longSimulationMaintainsFiniteState);
 
