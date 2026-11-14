@@ -934,7 +934,7 @@
       if (node) { if (node.baseNode) { notify("Floor base nodes stay glued to the ground."); return; } node.pinned = !node.pinned; refreshNodeInverseMass(node); node.px = node.x; node.py = node.y; updateInspector(); draw(); }
     });
     canvas.addEventListener("pointerdown", event => {
-      if (state.testMode && ["node", "member", "load", "delete"].includes(state.tool)) {
+      if (state.testMode && ["node", "member", "rope", "load", "delete"].includes(state.tool)) {
         notify("The structure is locked during a test. Reset Structure to edit your build.");
         return;
       }
