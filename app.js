@@ -217,27 +217,31 @@
     // Lower bendStiffness means more elastic bending before the failure threshold.
     const materialProfiles = {
       steel: {
-        color: "#aaa8ed", density: 7.8, bend: 0.95, strain: 0.34,
+        color: "#aaa8ed", density: 7.8, bend: 0.95, strain: 0.11,
         stiffness: 0.995, bendStiffness: 0.975, heatSoftening: 0.58,
-        heatWeakening: 0.78, staticFriction: 0.50, dynamicFriction: 0.30,
+        heatWeakening: 0.78, thermalExpansion: 0.000035, tensileYield: 0.018, plasticRate: 1.2,
+        staticFriction: 0.50, dynamicFriction: 0.30,
         restitution: 0.16, elasticity: 0.78, fatigueSeconds: 4.0
       },
       wood: {
-        color: "#bd9870", density: 0.68, bend: 0.42, strain: 0.20,
+        color: "#bd9870", density: 0.68, bend: 0.42, strain: 0.065,
         stiffness: 0.985, bendStiffness: 0.985, heatSoftening: 0.72,
-        heatWeakening: 0.92, staticFriction: 0.76, dynamicFriction: 0.49,
+        heatWeakening: 0.92, thermalExpansion: 0.000018, tensileYield: 0.012, plasticRate: 0.6,
+        staticFriction: 0.76, dynamicFriction: 0.49,
         restitution: 0.12, elasticity: 0.58, fatigueSeconds: 2.5
       },
       composite: {
-        color: "#79c6c4", density: 1.25, bend: 0.23, strain: 0.105,
+        color: "#79c6c4", density: 1.25, bend: 0.23, strain: 0.03,
         stiffness: 0.998, bendStiffness: 0.994, heatSoftening: 0.42,
-        heatWeakening: 0.86, staticFriction: 0.62, dynamicFriction: 0.38,
+        heatWeakening: 0.86, thermalExpansion: 0.00001, tensileYield: 0.006, plasticRate: 0.6,
+        staticFriction: 0.62, dynamicFriction: 0.38,
         restitution: 0.10, elasticity: 0.32, fatigueSeconds: 3.2
       },
       concrete: {
-        color: "#9c9eae", density: 2.35, bend: 0.20, strain: 0.09,
+        color: "#9c9eae", density: 2.35, bend: 0.20, strain: 0.025,
         stiffness: 0.999, bendStiffness: 0.997, heatSoftening: 0.35,
-        heatWeakening: 0.90, staticFriction: 0.88, dynamicFriction: 0.64,
+        heatWeakening: 0.90, thermalExpansion: 0.00001, tensileYield: 0.004, plasticRate: 0.4,
+        staticFriction: 0.88, dynamicFriction: 0.64,
         restitution: 0.08, elasticity: 0.25, fatigueSeconds: 2.0
       }
     };
@@ -328,7 +332,7 @@
         id: state.nextMember++, a, b, points, material, kind,
         rest, segmentRest: rest / 5, segmentRests,
         broken: false, stress: 0, damage: 0, fatigue: 0, temperature: 20,
-        memberMass
+        plasticStrain: 0, peakTensileStrain: 0, memberMass
       });
       return state.members[state.members.length - 1];
     }
@@ -407,6 +411,8 @@
         damage: source.damage || 0,
         fatigue: source.fatigue || 0,
         temperature: source.temperature || 20,
+        plasticStrain: source.plasticStrain || 0,
+        peakTensileStrain: 0,
         memberMass
       };
     }
@@ -710,6 +716,8 @@
           damage: member.damage,
           fatigue: member.fatigue,
           temperature: member.temperature,
+          plasticStrain: member.plasticStrain || 0,
+          peakTensileStrain: member.peakTensileStrain || 0,
           interior: member.points.slice(1, -1).map(point => ({ ...point }))
         })),
         loads: state.loads.map(load => ({ ...load }))
@@ -1264,6 +1272,7 @@
       for (const load of state.loads) integrateParticle(load, dt, materialProfiles.concrete);
 
       const solverIterations = 14;
+      for (const member of state.members) member.peakTensileStrain = 0;
       for (let iteration = 0; iteration < solverIterations; iteration++) {
         for (const member of state.members) {
           const hasFracture = member.broken && Number.isInteger(member.breakSegment);
@@ -1271,11 +1280,17 @@
           const profile = materialProfiles[member.material];
           const heat = clamp((member.temperature - 20) / 850, 0, 1);
           const thermalStiffness = 1 - profile.heatSoftening * heat;
+          const thermalScale = 1 + (profile.thermalExpansion || 0) * Math.max(0, member.temperature - 20);
+          const effectiveRestScale = thermalScale * (1 + (member.plasticStrain || 0));
           const axialGain = iterationGain(profile.stiffness * thermalStiffness, solverIterations);
           const bendGain = iterationGain(profile.bendStiffness * thermalStiffness, solverIterations);
           for (let i = 1; i < member.points.length; i++) {
             if (hasFracture && i - 1 === member.breakSegment) continue;
-            const segmentRest = member.segmentRests?.[i - 1] ?? member.segmentRest;
+            const baseSegmentRest = member.segmentRests?.[i - 1] ?? member.segmentRest;
+            const segmentRest = baseSegmentRest * effectiveRestScale;
+            const segmentLength = distance(member.points[i - 1], member.points[i]);
+            const tensileStrain = Math.max(0, (segmentLength - segmentRest) / Math.max(0.5, segmentRest));
+            member.peakTensileStrain = Math.max(member.peakTensileStrain, tensileStrain);
             if (member.kind === "rope") {
               solveTensionConstraint(member.points[i - 1], member.points[i], segmentRest, axialGain);
             } else {
@@ -1286,7 +1301,7 @@
             for (let i = 1; i + 1 < member.points.length; i++) {
               if (hasFracture && (i === member.breakSegment || i === member.breakSegment + 1)) continue;
               solveConstraint(member.points[i - 1], member.points[i + 1],
-                member.segmentRest * 2, bendGain);
+                member.segmentRest * 2 * effectiveRestScale, bendGain);
             }
           }
           // Beam rigidity: a structural member must resist distributed curvature,
@@ -1343,18 +1358,32 @@
         const strengthFactor = Math.max(0.08, 1 - profile.heatWeakening * heat);
         const remainingIntegrity = Math.max(0.05, 1 - member.damage);
         const effectiveCapacity = strengthFactor * remainingIntegrity;
+        const thermalScale = 1 + (profile.thermalExpansion || 0) * excessTemperature;
+        const effectiveRestLength = member.rest * thermalScale * (1 + (member.plasticStrain || 0));
         const bendingCapacity = Math.max(0.08, profile.bend * effectiveCapacity);
-        const axialCapacity = Math.max(0.03, profile.strain * effectiveCapacity);
-        const strain = member.kind === "rope"
-          ? Math.max(0, currentLength - member.rest) / Math.max(1, member.rest)
-          : Math.abs(currentLength - member.rest) / Math.max(1, member.rest);
-        member.stress = member.kind === "rope"
-          ? strain / axialCapacity
-          : Math.max(strain / axialCapacity, maxAngle / bendingCapacity);
-        if (member.stress > 0.72) member.fatigue += dt * (member.stress - 0.68) * 0.42;
+        const axialCapacity = Math.max(0.012, profile.strain * effectiveCapacity);
+        const finalTensionStrain = Math.max(0, (currentLength - effectiveRestLength) / Math.max(1, effectiveRestLength));
+        const tensileStrain = Math.max(member.peakTensileStrain || 0, finalTensionStrain);
+        const compressionStrain = member.kind === "rope" ? 0 :
+          Math.max(0, (effectiveRestLength - currentLength) / Math.max(1, effectiveRestLength));
+        member.stress = Math.max(
+          tensileStrain / axialCapacity,
+          compressionStrain / axialCapacity,
+          member.kind === "rope" ? 0 : maxAngle / bendingCapacity
+        );
+
+        const yieldStrain = (profile.tensileYield || profile.strain * 0.5) *
+          Math.max(0.15, 1 - profile.heatWeakening * heat);
+        if (tensileStrain > yieldStrain) {
+          member.plasticStrain = Math.min(0.45, (member.plasticStrain || 0) +
+            (tensileStrain - yieldStrain) * (profile.plasticRate || 0.6) *
+            (1 + 2 * heat) * dt);
+        }
+        const fatigueLimit = profile.fatigueSeconds * Math.max(0.25, 1 - 0.65 * heat);
+        if (member.stress > 0.62) member.fatigue += dt * (member.stress - 0.58) * 0.75;
         else member.fatigue = Math.max(0, member.fatigue - dt * 0.08);
-        member.damage = clamp(member.damage + Math.max(0, member.stress - 0.85) * dt * 0.16, 0, 0.99);
-        if (member.stress > 1.12 || member.fatigue > profile.fatigueSeconds) member.broken = true;
+        member.damage = clamp(member.damage + Math.max(0, member.stress - 0.78) * dt * 0.24, 0, 0.99);
+        if (member.stress > 1.0 || member.fatigue > fatigueLimit) member.broken = true;
         member.temperature = Math.max(20, member.temperature - dt * 1.5);
       }
     }
