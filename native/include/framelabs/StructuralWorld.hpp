@@ -25,6 +25,8 @@ enum class MaterialKind : std::uint8_t {
     Steel,
     Wood,
     Composite,
+    ExplosiveComposite,
+    FlammableComposite,
     Concrete
 };
 
