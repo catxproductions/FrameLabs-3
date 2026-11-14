@@ -863,7 +863,7 @@
         member: "Click two existing nodes to connect them with a rigid structural member.",
         rope: "Click two nodes to connect them with a flexible, tension-only rope.",
         load: "Click in the scene to drop a 220 kg test load.",
-        heat: "Hold or drag over a member to heat it and weaken its material response.",
+        heat: "Heat softens members and expands steel. Tension can permanently stretch or snap an overloaded member.",
         delete: "Click a node, member, or test load to remove it. Deleting a node also removes its connected members.",
         break: "Click a member to fracture it. The two separated pieces remain in the simulation."
       };
