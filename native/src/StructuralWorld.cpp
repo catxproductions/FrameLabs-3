@@ -171,6 +171,38 @@ const MaterialProfile& materialProfile(MaterialKind kind) noexcept {
     return profiles[static_cast<unsigned>(kind) < 6 ? static_cast<unsigned>(kind) : 0];
 }
 
+
+void resolveMemberSegmentContact(Particle& a0, Particle& a1,
+                                 Particle& b0, Particle& b1) {
+    const Vec2 u=sub(a1.p,a0.p), v=sub(b1.p,b0.p), w=sub(a0.p,b0.p);
+    const float aa=dot(u,u), bb=dot(u,v), cc=dot(v,v);
+    const float dd=dot(u,w), ee=dot(v,w), denom=aa*cc-bb*bb;
+    float sc=0.0f, tc=0.0f;
+    if(aa<1e-8f && cc<1e-8f) return;
+    if(aa<1e-8f) tc=clampf(ee/std::max(cc,1e-8f),0.0f,1.0f);
+    else if(cc<1e-8f) sc=clampf(-dd/aa,0.0f,1.0f);
+    else {
+        sc=std::fabs(denom)>1e-8f?clampf((bb*ee-cc*dd)/denom,0.0f,1.0f):0.0f;
+        tc=clampf((bb*sc+ee)/cc,0.0f,1.0f);
+        sc=clampf((bb*tc-dd)/aa,0.0f,1.0f);
+    }
+    const Vec2 pa=add(a0.p,mul(u,sc)), pb=add(b0.p,mul(v,tc));
+    const Vec2 delta=sub(pb,pa);
+    const float d=length(delta);
+    const float minimum=std::max(0.12f,(a0.radius+a1.radius+b0.radius+b1.radius)*0.5f);
+    if(d>=minimum) return;
+    const Vec2 normal=d>1e-6f?mul(delta,1.0f/d):Vec2{0.0f,1.0f};
+    const float wa0=a0.inverseMass*(1.0f-sc)*(1.0f-sc), wa1=a1.inverseMass*sc*sc;
+    const float wb0=b0.inverseMass*(1.0f-tc)*(1.0f-tc), wb1=b1.inverseMass*tc*tc;
+    const float sum=wa0+wa1+wb0+wb1;
+    if(sum<=1e-8f) return;
+    const float penetration=(minimum-d)*0.82f;
+    a0.p=sub(a0.p,mul(normal,penetration*wa0/sum));
+    a1.p=sub(a1.p,mul(normal,penetration*wa1/sum));
+    b0.p=add(b0.p,mul(normal,penetration*wb0/sum));
+    b1.p=add(b1.p,mul(normal,penetration*wb1/sum));
+}
+
 struct StructuralWorld::Impl {
     std::vector<Particle> particles;
     std::vector<NodeData> nodes;
@@ -476,6 +508,19 @@ void StructuralWorld::step(float dt) {
                 const Vec2 target=add(beamStart.p,mul(sub(beamEnd.p,beamStart.p),t));
                 point.p=add(point.p,mul(sub(target,point.p),bendGain));
             }
+        }
+    }
+    // Treat every member as a continuous capsule. Contacts are solved
+    // between separate members, but shared design joints remain connected.
+    for(std::size_t mi=0;mi<w.memberData.size();++mi) {
+        auto& first=w.memberData[mi];
+        for(std::size_t mj=mi+1;mj<w.memberData.size();++mj) {
+            auto& second=w.memberData[mj];
+            if(first.a==second.a||first.a==second.b||first.b==second.a||first.b==second.b) continue;
+            for(std::size_t i=1;i<first.particles.size();++i)
+                for(std::size_t j=1;j<second.particles.size();++j)
+                    resolveMemberSegmentContact(w.particles[first.particles[i-1]],w.particles[first.particles[i]],
+                        w.particles[second.particles[j-1]],w.particles[second.particles[j]]);
         }
     }
     // Re-apply continuous contacts after structural constraints so the load
