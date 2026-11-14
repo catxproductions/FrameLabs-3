@@ -137,6 +137,8 @@ public:
     NodeId findNodeNear(Vec2 position, float radius) const;
     bool toggleNodePin(NodeId id);
     bool getNodePosition(NodeId id, Vec2& outPosition) const;
+    // Apply an external impulse to a movable node. Input is in newton-seconds.
+    bool applyNodeImpulse(NodeId id, Vec2 impulseNewtonSeconds);
 
     MemberId addMember(NodeId nodeA, NodeId nodeB, MaterialKind material, MemberRole role = MemberRole::Beam);
     bool removeMember(MemberId id);
