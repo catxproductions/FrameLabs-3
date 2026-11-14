@@ -238,10 +238,10 @@
 
     const distance = (a, b) => Math.hypot(b.x - a.x, b.y - a.y);
     const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
-    const makeNode = (x, y, pinned = false) => {
+    const makeNode = (x, y, pinned = false, baseNode = false) => {
       const node = {
         id: state.nextNode++, x, y, px: x, py: y,
-        pinned, radius: 5.5, baseMass: 0.5, mass: 0.5, inverseMass: pinned ? 0 : 2
+        pinned: pinned || baseNode, baseNode, radius: 5.5, baseMass: 0.5, mass: 0.5, inverseMass: (pinned || baseNode) ? 0 : 2
       };
       return node;
     };
@@ -417,7 +417,7 @@
         nextMember: state.nextMember,
         nodes: state.nodes.map(node => ({
           id: node.id, x: node.x, y: node.y, px: node.px, py: node.py,
-          pinned: node.pinned, radius: node.radius, baseMass: node.baseMass
+          pinned: node.pinned, baseNode: !!node.baseNode, radius: node.radius, baseMass: node.baseMass
         })),
         members: state.members.map(member => ({
           id: member.id,
@@ -549,7 +549,7 @@
       if (!summary) return;
       if (state.selectedNode) {
         summary.innerHTML = "<span>●</span><div><b>Node " + state.selectedNode.id + "</b><small>" +
-          (state.selectedNode.pinned ? "Pinned support" : "Dynamic node") + "</small></div>";
+          (state.selectedNode.baseNode ? "Floor base · glued to ground" : state.selectedNode.pinned ? "Pinned support" : "Dynamic node") + "</small></div>";
       } else if (state.selectedMember) {
         summary.innerHTML = "<span>╱</span><div><b>" + state.selectedMember.material + " member</b><small>" +
           (state.selectedMember.broken ? "Failed" : "Stress " + Math.round(state.selectedMember.stress * 100) + "%") + "</small></div>";
@@ -648,7 +648,7 @@
         return;
       }
       const p = pointerPosition(event), node = closestNode(p.x, p.y);
-      if (node) { node.pinned = !node.pinned; refreshNodeInverseMass(node); node.px = node.x; node.py = node.y; updateInspector(); draw(); }
+      if (node) { if (node.baseNode) { notify("Floor base nodes stay glued to the ground."); return; } node.pinned = !node.pinned; refreshNodeInverseMass(node); node.px = node.x; node.py = node.y; updateInspector(); draw(); }
     });
     canvas.addEventListener("pointerdown", event => {
       if (state.testMode && ["node", "member", "load", "delete"].includes(state.tool)) {
@@ -661,7 +661,8 @@
       canvas.setPointerCapture(event.pointerId);
       if (state.tool === "node") {
         const place = snappedPoint(p);
-        const node = makeNode(place.x, place.y);
+        const isFloorPlacement = place.y >= state.ground - 12;
+        const node = makeNode(place.x, isFloorPlacement ? state.ground : place.y, false, isFloorPlacement);
         state.nodes.push(node);
         state.selectedNode = node;
         state.selectedMember = null;
@@ -736,7 +737,16 @@
         draw();
       } else if (state.tool === "heat" && event.buttons === 1) applyHeat(p.x, p.y, 8);
     });
-    const endDrag = () => { state.dragging = null; };
+    const endDrag = () => {
+      if (state.dragging && !state.dragging.baseNode && state.dragging.y >= state.ground - 12) {
+        const node = state.dragging;
+        node.y = state.ground; node.py = node.y; node.px = node.x;
+        node.baseNode = true; node.pinned = true; refreshNodeInverseMass(node);
+        notify("Base node created: glued to the floor.");
+        updateInspector(); draw();
+      }
+      state.dragging = null;
+    };
     canvas.addEventListener("pointerup", endDrag);
     canvas.addEventListener("pointercancel", endDrag);
 
