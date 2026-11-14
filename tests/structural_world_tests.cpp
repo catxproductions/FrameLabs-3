@@ -125,6 +125,23 @@ void compositeEffectsAreRestrictedToTheirMatchingMaterials() {
     require(broken,"blast did not trigger explosive composite");
 }
 
+void separateStructuralMembersCollide() {
+    StructuralWorld world;
+    world.clear();
+    const NodeId a=world.addNode({2.0f,4.0f},true);
+    const NodeId b=world.addNode({6.0f,4.0f},true);
+    const NodeId c=world.addNode({4.0f,2.0f},false);
+    const NodeId d=world.addNode({4.0f,6.0f},false);
+    world.addMember(a,b,MaterialKind::Steel);
+    world.addMember(c,d,MaterialKind::Steel);
+    for(int i=0;i<240;++i)world.step(1.0f/120.0f);
+    const NodeView* moved=nullptr;
+    for(const auto& node:world.nodes())if(node.id==c)moved=&node;
+    require(moved!=nullptr,"moving member endpoint disappeared");
+    require(std::fabs(moved->position.x-4.0f)>0.02f,
+            "crossing structural members passed through each other");
+}
+
 void fixedSubstepsAreIndependentOfRenderStepGrouping() {
     StructuralWorld oneLargeStep;
     StructuralWorld twoSmallSteps;
@@ -186,6 +203,7 @@ int main() {
     run("full-length heat brush", heatBrushReachesMemberEndpoints);
     run("material bending hierarchy and contact profiles", materialProfilesPreserveTheRequestedBendingOrder);
     run("composite ignition and explosion effects", compositeEffectsAreRestrictedToTheirMatchingMaterials);
+    run("structural members collide with each other", separateStructuralMembersCollide);
     run("fixed-step determinism across render-step grouping", fixedSubstepsAreIndependentOfRenderStepGrouping);
     run("finite state during extended simulation", longSimulationMaintainsFiniteState);
 
