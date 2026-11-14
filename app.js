@@ -569,7 +569,7 @@
       });
       const hints = {
         select: "Select nodes or members. Drag a node to reposition it. Right-click a node to pin it.",
-        node: "Click empty space to place a new node.",
+        node: "Click and drag anywhere in the scene to place a node precisely. Release to set it down.",
         member: "Click two existing nodes to connect them with the selected material.",
         load: "Click in the scene to drop a 220 kg test load.",
         heat: "Hold or drag over a member to heat it and weaken its material response.",
@@ -661,8 +661,15 @@
       canvas.setPointerCapture(event.pointerId);
       if (state.tool === "node") {
         const place = snappedPoint(p);
-        state.nodes.push(makeNode(place.x, place.y));
-        updateInspector(); draw(); return;
+        const node = makeNode(place.x, place.y);
+        state.nodes.push(node);
+        state.selectedNode = node;
+        state.selectedMember = null;
+        state.selectedLoad = null;
+        state.dragging = node;
+        updateInspector();
+        draw();
+        return;
       }
       if (state.tool === "member") {
         const node = closestNode(p.x, p.y, 22);
@@ -725,6 +732,7 @@
         const moveTo = snappedPoint(p);
         state.dragging.x = moveTo.x; state.dragging.y = moveTo.y;
         state.dragging.px = moveTo.x; state.dragging.py = moveTo.y;
+        updateInspector();
         draw();
       } else if (state.tool === "heat" && event.buttons === 1) applyHeat(p.x, p.y, 8);
     });
