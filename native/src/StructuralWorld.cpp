@@ -342,7 +342,7 @@ struct StructuralWorld::Impl {
             for(std::size_t i=1;i<m.particles.size();++i){
                 v.currentLength+=distance(particles[m.particles[i-1]].p,particles[m.particles[i]].p);
             }
-            v.axialStrain=(v.currentLength-m.restLength)/std::max(.001f,m.restLength);
+            v.axialStrain=(v.currentLength-v.restLength)/std::max(.001f,v.restLength);
             v.stressRatio=m.stress; v.damage=m.damage; v.temperatureC=m.temperature;
             v.maxBendRadians=m.bend; v.yielding=m.stress>.72f; v.broken=m.broken; v.ignited=m.ignited;
             const auto& profile=materialProfile(m.material);
