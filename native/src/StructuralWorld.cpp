@@ -162,9 +162,11 @@ const MaterialProfile& materialProfile(MaterialKind kind) noexcept {
         {"steel","Steel",{120,202,255},7.8f,15.0f,9.0f,0.975f,25.0f,18.0f,0.20f,0.95f,0.22f,0.72f,0.78f,4.0f,0.50f,0.30f,0.16f,0.78f,0.78f},
         {"wood","Wood",{220,167,106},0.68f,23.0f,13.0f,0.985f,7.0f,5.0f,0.055f,0.105f,0.055f,0.82f,0.92f,2.5f,0.76f,0.49f,0.12f,0.62f,0.58f},
         {"composite","Composite",{178,151,230},1.25f,31.0f,18.0f,0.994f,11.0f,8.0f,0.022f,0.060f,0.028f,0.90f,0.86f,3.2f,0.62f,0.38f,0.10f,0.45f,0.32f},
+        {"explosive-composite","Explosive Composite",{214,138,85},1.35f,31.0f,18.0f,0.994f,11.0f,8.0f,0.022f,0.060f,0.028f,0.48f,0.90f,2.8f,0.62f,0.38f,0.10f,0.42f,0.30f},
+        {"flammable-composite","Flammable Composite",{214,180,107},1.18f,30.0f,17.0f,0.992f,10.0f,7.0f,0.025f,0.065f,0.032f,0.78f,0.94f,2.7f,0.62f,0.38f,0.10f,0.42f,0.34f},
         {"concrete","Concrete",{180,190,205},2.35f,27.0f,15.0f,0.997f,14.0f,10.0f,0.012f,0.035f,0.018f,0.88f,0.90f,2.0f,0.88f,0.64f,0.08f,0.28f,0.25f}
     };
-    return profiles[static_cast<unsigned>(kind) < 4 ? static_cast<unsigned>(kind) : 0];
+    return profiles[static_cast<unsigned>(kind) < 6 ? static_cast<unsigned>(kind) : 0];
 }
 
 struct StructuralWorld::Impl {
