@@ -420,6 +420,17 @@ void StructuralWorld::step(float dt) {
                 Vec2 correction=mul(d,((len-rest)/len)*bendGain);
                 a.p=add(a.p,mul(correction,wa/sum));b.p=sub(b.p,mul(correction,wb/sum));
             }
+            // A beam is not a rope: resist distributed curvature by keeping
+            // internal stations close to the endpoint chord. Material-specific
+            // bending compliance still permits a small elastic deflection.
+            auto& beamStart=w.particles[m.particles.front()];
+            auto& beamEnd=w.particles[m.particles.back()];
+            for(std::size_t i=1;i+1<m.particles.size();++i){
+                auto& point=w.particles[m.particles[i]];
+                const float t=static_cast<float>(i)/static_cast<float>(m.particles.size()-1);
+                const Vec2 target=add(beamStart.p,mul(sub(beamEnd.p,beamStart.p),t));
+                point.p=add(point.p,mul(sub(target,point.p),bendGain));
+            }
         }
     }
     // Re-apply continuous contacts after structural constraints so the load
