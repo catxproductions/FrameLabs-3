@@ -533,7 +533,7 @@
       state.selectedMember = null;
       state.selectedLoad = null;
       updateInspector();
-      return connectedJoints.size;
+      return new Set([...connectedJoints].map(resolveNode)).size;
     }
 
     function resizeCanvas() {
