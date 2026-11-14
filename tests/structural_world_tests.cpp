@@ -1,7 +1,9 @@
 #include "framelabs/StructuralWorld.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <iostream>
+#include <limits>
 #include <stdexcept>
 
 using namespace framelabs;
