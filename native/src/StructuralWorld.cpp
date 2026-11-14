@@ -203,6 +203,21 @@ void resolveMemberSegmentContact(Particle& a0, Particle& a1,
     b1.p=add(b1.p,mul(normal,penetration*wb1/sum));
 }
 
+
+void resolveLoadLoadContact(LoadData& a, LoadData& b) {
+    const Vec2 delta=sub(b.view.position,a.view.position);
+    const float d=length(delta), minimum=a.view.radius+b.view.radius;
+    if(d>=minimum) return;
+    const float invA=1.0f/std::max(0.1f,a.view.massKg/100.0f);
+    const float invB=1.0f/std::max(0.1f,b.view.massKg/100.0f);
+    const float sum=invA+invB;
+    if(sum<=1e-8f) return;
+    const Vec2 normal=d>1e-6f?mul(delta,1.0f/d):Vec2{1.0f,0.0f};
+    const float penetration=(minimum-d)*0.82f;
+    a.view.position=sub(a.view.position,mul(normal,penetration*invA/sum));
+    b.view.position=add(b.view.position,mul(normal,penetration*invB/sum));
+}
+
 struct StructuralWorld::Impl {
     std::vector<Particle> particles;
     std::vector<NodeData> nodes;
@@ -533,6 +548,9 @@ void StructuralWorld::step(float dt) {
             }
         }
     }
+    for(std::size_t i=0;i<w.loadData.size();++i)
+        for(std::size_t j=i+1;j<w.loadData.size();++j)
+            resolveLoadLoadContact(w.loadData[i],w.loadData[j]);
     // Re-apply frictional ground contact after constraints to prevent
     // particles being projected below the floor at the end of a substep.
     for(auto& p:w.particles)if(p.inverseMass>0){
