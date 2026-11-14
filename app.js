@@ -775,6 +775,25 @@
             solveConstraint(member.points[i - 1], member.points[i + 1],
               member.segmentRest * 2, bendGain);
           }
+          // Beam rigidity: a structural member must resist distributed curvature,
+          // not behave like a chain of freely hinged cloth particles. Project its
+          // interior stations toward the endpoint chord with material compliance.
+          // Steel yields slightly; wood flexes more; composite stays comparatively rigid.
+          if (!hasFracture) {
+            const a = member.points[0], b = member.points[member.points.length - 1];
+            const beamGain = bendGain;
+            for (let i = 1; i < member.points.length - 1; i++) {
+              const point = member.points[i];
+              const t = i / (member.points.length - 1);
+              const targetX = a.x + (b.x - a.x) * t;
+              const targetY = a.y + (b.y - a.y) * t;
+              const weight = Math.max(0, point.inverseMass || 0);
+              if (weight > 0) {
+                point.x += (targetX - point.x) * beamGain;
+                point.y += (targetY - point.y) * beamGain;
+              }
+            }
+          }
         }
         for (const load of state.loads) {
           for (const member of state.members) {
