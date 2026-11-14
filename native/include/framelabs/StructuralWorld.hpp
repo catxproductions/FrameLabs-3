@@ -97,6 +97,7 @@ struct MemberView {
     float maxBendRadians = 0.0f;
     bool broken = false;
     bool yielding = false;
+    bool ignited = false;
     std::vector<SegmentView> segments;
 };
 
@@ -138,6 +139,8 @@ public:
     std::uint32_t findLoadNear(Vec2 position, float radius) const;
     bool removeLoad(std::uint32_t id);
     void applyHeat(Vec2 position, float radius, float degreesPerSecond, float deltaSeconds);
+    void ignite(Vec2 position, float radius);
+    void explode(Vec2 position, float radius, float strength);
     void setWind(float normalizedStrength) noexcept;
     void step(float deltaSeconds);
 
