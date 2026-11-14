@@ -51,16 +51,20 @@ void nodesPlacedOnGroundBecomeFloorBases() {
     world.clear();
     const NodeId floorNode = world.addNode({2.0f, 0.02f}, false);
     const NodeId elevatedNode = world.addNode({4.0f, 1.0f}, false);
+    const NodeId lowButNotOnFloor = world.addNode({6.0f, 0.15f}, false);
     bool foundFloorBase = false;
     bool foundDynamicNode = false;
+    bool foundLowDynamicNode = false;
     for (const auto& node : world.nodes()) {
         if (node.id == floorNode) {
             foundFloorBase = node.pinned && std::fabs(node.position.y - 0.075f) < 1e-5f;
         }
         if (node.id == elevatedNode) foundDynamicNode = !node.pinned;
+        if (node.id == lowButNotOnFloor) foundLowDynamicNode = !node.pinned;
     }
     require(foundFloorBase, "node placed at the floor was not snapped down and pinned");
     require(foundDynamicNode, "elevated node was incorrectly pinned as a floor base");
+    require(foundLowDynamicNode, "near-floor node was incorrectly treated as a floor base");
 }
 
 void loadsContactTheFullLengthOfLongMembers() {
