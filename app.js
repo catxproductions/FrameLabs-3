@@ -900,11 +900,19 @@
       const wa0=(a0.inverseMass||0)*(1-t)*(1-t),wa1=(a1.inverseMass||0)*t*t;
       const wb0=(b0.inverseMass||0)*(1-u)*(1-u),wb1=(b1.inverseMass||0)*u*u;
       const sum=wa0+wa1+wb0+wb1;if(sum<=1e-8)return;
-      const push=(minimum-d)*0.82;
-      a0.x-=nx*push*wa0/sum;a0.y-=ny*push*wa0/sum;
-      a1.x-=nx*push*wa1/sum;a1.y-=ny*push*wa1/sum;
-      b0.x+=nx*push*wb0/sum;b0.y+=ny*push*wb0/sum;
-      b1.x+=nx*push*wb1/sum;b1.y+=ny*push*wb1/sum;
+      // Keep contact projection out of Verlet velocity and resolve gently.
+      const push=Math.min(1.5,(minimum-d)*0.24);
+      const corrections=[
+        [-nx*push*wa0/sum,-ny*push*wa0/sum,a0],
+        [-nx*push*wa1/sum,-ny*push*wa1/sum,a1],
+        [ nx*push*wb0/sum, ny*push*wb0/sum,b0],
+        [ nx*push*wb1/sum, ny*push*wb1/sum,b1]
+      ];
+      for(const [dxp,dyp,point] of corrections) {
+        point.x+=dxp; point.y+=dyp;
+        if(Number.isFinite(point.px)) point.px+=dxp;
+        if(Number.isFinite(point.py)) point.py+=dyp;
+      }
     }
 
     function solveMemberMemberContacts() {
@@ -931,8 +939,10 @@
           const wa=a.inverseMass||0,wb=b.inverseMass||0,sum=wa+wb;
           if(sum<=1e-8)continue;
           const nx=d>0.001?dx/d:1,ny=d>0.001?dy/d:0,push=(minimum-d)*0.82;
-          a.x-=nx*push*wa/sum;a.y-=ny*push*wa/sum;
-          b.x+=nx*push*wb/sum;b.y+=ny*push*wb/sum;
+          const dax=-nx*push*wa/sum, day=-ny*push*wa/sum;
+          const dbx= nx*push*wb/sum, dby= ny*push*wb/sum;
+          a.x+=dax; a.y+=day; a.px+=dax; a.py+=day;
+          b.x+=dbx; b.y+=dby; b.px+=dbx; b.py+=dby;
         }
       }
     }
