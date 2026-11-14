@@ -534,18 +534,19 @@ void StructuralWorld::step(float dt) {
                 point.p=add(point.p,mul(sub(target,point.p),bendGain));
             }
         }
-    }
-    // Treat every member as a continuous capsule. Contacts are solved
-    // between separate members, but shared design joints remain connected.
-    for(std::size_t mi=0;mi<w.memberData.size();++mi) {
-        auto& first=w.memberData[mi];
-        for(std::size_t mj=mi+1;mj<w.memberData.size();++mj) {
-            auto& second=w.memberData[mj];
-            if(first.a==second.a||first.a==second.b||first.b==second.a||first.b==second.b) continue;
-            for(std::size_t i=1;i<first.particles.size();++i)
-                for(std::size_t j=1;j<second.particles.size();++j)
-                    resolveMemberSegmentContact(w.particles[first.particles[i-1]],w.particles[first.particles[i]],
-                        w.particles[second.particles[j-1]],w.particles[second.particles[j]]);
+        // Resolve member contacts every solver iteration so structural
+        // constraints and contact constraints converge together.
+        for(std::size_t mi=0;mi<w.memberData.size();++mi) {
+            auto& first=w.memberData[mi];
+            for(std::size_t mj=mi+1;mj<w.memberData.size();++mj) {
+                auto& second=w.memberData[mj];
+                if(first.broken || second.broken) continue;
+                if(first.a==second.a||first.a==second.b||first.b==second.a||first.b==second.b) continue;
+                for(std::size_t i=1;i<first.particles.size();++i)
+                    for(std::size_t j=1;j<second.particles.size();++j)
+                        resolveMemberSegmentContact(w.particles[first.particles[i-1]],w.particles[first.particles[i]],
+                            w.particles[second.particles[j-1]],w.particles[second.particles[j]]);
+            }
         }
     }
     // Re-apply continuous contacts after structural constraints so the load
