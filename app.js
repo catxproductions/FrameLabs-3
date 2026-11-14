@@ -872,6 +872,44 @@
       }
     }
 
+
+    function resolveSegmentPairContact(a0, a1, b0, b1) {
+      const ux=a1.x-a0.x, uy=a1.y-a0.y, vx=b1.x-b0.x, vy=b1.y-b0.y;
+      const wx=a0.x-b0.x, wy=a0.y-b0.y;
+      const aa=ux*ux+uy*uy, bb=ux*vx+uy*vy, cc=vx*vx+vy*vy;
+      const dd=ux*wx+uy*wy, ee=vx*wx+vy*wy, denom=aa*cc-bb*bb;
+      let t=0,u=0;
+      if(aa<1e-8&&cc<1e-8)return;
+      if(aa<1e-8)u=clamp(ee/Math.max(cc,1e-8),0,1);
+      else if(cc<1e-8)t=clamp(-dd/aa,0,1);
+      else {t=Math.abs(denom)>1e-8?clamp((bb*ee-cc*dd)/denom,0,1):0;u=clamp((bb*t+ee)/cc,0,1);t=clamp((bb*u-dd)/aa,0,1);}
+      const dx=(b0.x+vx*u)-(a0.x+ux*t), dy=(b0.y+vy*u)-(a0.y+uy*t);
+      const d=Math.hypot(dx,dy), minimum=Math.max(5.2,((a0.radius||2.6)+(a1.radius||2.6)+(b0.radius||2.6)+(b1.radius||2.6))*0.5);
+      if(d>=minimum)return;
+      const nx=d>0.001?dx/d:0,ny=d>0.001?dy/d:1;
+      const wa0=(a0.inverseMass||0)*(1-t)*(1-t),wa1=(a1.inverseMass||0)*t*t;
+      const wb0=(b0.inverseMass||0)*(1-u)*(1-u),wb1=(b1.inverseMass||0)*u*u;
+      const sum=wa0+wa1+wb0+wb1;if(sum<=1e-8)return;
+      const push=(minimum-d)*0.82;
+      a0.x-=nx*push*wa0/sum;a0.y-=ny*push*wa0/sum;
+      a1.x-=nx*push*wa1/sum;a1.y-=ny*push*wa1/sum;
+      b0.x+=nx*push*wb0/sum;b0.y+=ny*push*wb0/sum;
+      b1.x+=nx*push*wb1/sum;b1.y+=ny*push*wb1/sum;
+    }
+
+    function solveMemberMemberContacts() {
+      for(let i=0;i<state.members.length;i++) {
+        const first=state.members[i];
+        for(let j=i+1;j<state.members.length;j++) {
+          const second=state.members[j];
+          if(first.a===second.a||first.a===second.b||first.b===second.a||first.b===second.b)continue;
+          for(let a=1;a<first.points.length;a++)
+            for(let b=1;b<second.points.length;b++)
+              resolveSegmentPairContact(first.points[a-1],first.points[a],second.points[b-1],second.points[b]);
+        }
+      }
+    }
+
     function iterationGain(targetStiffness, iterations) {
       const target = clamp(targetStiffness, 0, 0.9999);
       return 1 - Math.pow(1 - target, 1 / Math.max(1, iterations));
@@ -926,6 +964,7 @@
             }
           }
         }
+        solveMemberMemberContacts();
         for (const load of state.loads) {
           for (const member of state.members) {
             solveLoadMemberContact(load, member, dt, iteration === solverIterations - 1);
