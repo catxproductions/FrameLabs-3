@@ -379,6 +379,15 @@ bool StructuralWorld::toggleNodePin(NodeId id) {
 bool StructuralWorld::getNodePosition(NodeId id,Vec2& out) const {
     const auto* p=impl_->particleFor(id); if(!p)return false; out=p->p; return true;
 }
+bool StructuralWorld::applyNodeImpulse(NodeId id, Vec2 impulseNewtonSeconds) {
+    auto* particle=impl_->particleFor(id);
+    if(!particle || particle->inverseMass<=0.0f) return false;
+    // Convert SI impulse into simulation-world velocity using the physical grid scale.
+    const Vec2 worldImpulse=mul(impulseNewtonSeconds,1.0f/MetersPerWorldUnit);
+    applyParticleImpulse(*particle,worldImpulse,1.0f/120.0f);
+    impl_->rebuildViews();
+    return true;
+}
 MemberId StructuralWorld::addMember(NodeId a,NodeId b,MaterialKind material,MemberRole role) {
     if(a==b)return 0;
     auto* pa=impl_->particleFor(a); auto* pb=impl_->particleFor(b);
