@@ -197,6 +197,44 @@ void ropeSagsAndActsAsATensionOnlyMember() {
     require(rope->stressRatio < 1.0f, "a slack rope incorrectly registered bending failure");
 }
 
+void heatedSteelExpandsItsRestLengthAndStretches() {
+    StructuralWorld world;
+    world.clear();
+    const NodeId fixed = world.addNode({2.0f, 5.0f}, true);
+    const NodeId free = world.addNode({6.0f, 5.0f}, false);
+    const MemberId steel = world.addMember(fixed, free, MaterialKind::Steel);
+    require(steel != 0, "failed to create heated steel member");
+    Vec2 start{}, before{}, after{};
+    require(world.getNodePosition(fixed, start), "fixed node was not available");
+    require(world.getNodePosition(free, before), "free node was not available");
+
+    world.applyHeat({4.0f, 5.0f}, 2.5f, 1000.0f, 1.0f);
+    for (int i = 0; i < 120; ++i) world.step(1.0f / 120.0f);
+
+    require(world.getNodePosition(free, after), "heated steel endpoint disappeared");
+    const float initialLength = std::hypot(before.x - start.x, before.y - start.y);
+    const float heatedLength = std::hypot(after.x - start.x, after.y - start.y);
+    require(heatedLength > initialLength * 1.01f,
+            "heated steel did not thermally expand its structural rest length");
+}
+
+void severeTensileImpulseFracturesSteel() {
+    StructuralWorld world;
+    world.clear();
+    const NodeId fixed = world.addNode({2.0f, 5.0f}, true);
+    const NodeId pulled = world.addNode({6.0f, 5.0f}, false);
+    const MemberId steel = world.addMember(fixed, pulled, MaterialKind::Steel);
+    require(steel != 0, "failed to create tensile test member");
+    require(world.applyNodeImpulse(pulled, {60.0f, 0.0f}),
+            "failed to apply tensile impulse to free endpoint");
+
+    for (int i = 0; i < 4 && world.brokenMemberCount() == 0; ++i) {
+        world.step(1.0f / 120.0f);
+    }
+    require(world.brokenMemberCount() > 0,
+            "steel member did not fracture after severe sustained tensile strain");
+}
+
 void fixedSubstepsAreIndependentOfRenderStepGrouping() {
     StructuralWorld oneLargeStep;
     StructuralWorld twoSmallSteps;
@@ -261,6 +299,8 @@ int main() {
     run("composite ignition and explosion effects", compositeEffectsAreRestrictedToTheirMatchingMaterials);
     run("structural members collide with each other", separateStructuralMembersCollide);
     run("five-square-foot physical grid scale", gridCellHasTheConfiguredPhysicalArea);
+    run("heated steel thermal expansion", heatedSteelExpandsItsRestLengthAndStretches);
+    run("steel fracture under severe tension", severeTensileImpulseFracturesSteel);
     run("rope sag and tension-only mechanics", ropeSagsAndActsAsATensionOnlyMember);
     run("fixed-step determinism across render-step grouping", fixedSubstepsAreIndependentOfRenderStepGrouping);
     run("finite state during extended simulation", longSimulationMaintainsFiniteState);
