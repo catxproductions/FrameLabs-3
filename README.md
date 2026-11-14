@@ -24,6 +24,10 @@ One grid cell represents **5 square feet of area**. Each cell is therefore appro
 
 The material and failure models remain game-tuned approximations, not certified structural-engineering calculations. The grid scale gives the simulation a consistent physical reference; it does not make the solver suitable for real building design.
 
+### Heated metal and tensile failure
+
+Steel expands as it heats, loses axial stiffness and tensile strength, and can accumulate permanent elongation when it is pulled beyond its temperature-dependent yield point. The solver records peak tensile strain before constraint correction, so an overloaded member cannot hide its stress merely because the solver pulls it back toward its rest length. Sustained overload accumulates fatigue and can fracture the member. These are deliberately exaggerated game responses, not engineering-grade material predictions.
+
 ### Ropes
 
 The Rope tool creates flexible, sagging members. Rope constraints are **tension-only**: they pull when stretched, go slack when compressed, and do not apply beam-style bending rigidity. Use the selected material to choose the rope's density and failure response.
