@@ -82,6 +82,10 @@ void materialProfilesPreserveTheRequestedBendingOrder() {
             "steel should flex slightly more than wood");
     require(wood.bendingStiffness < composite.bendingStiffness,
             "wood should flex more than composite");
+    require(wood.bendingStiffness < materialProfile(MaterialKind::ExplosiveComposite).bendingStiffness,
+            "wood should flex more than explosive composite");
+    require(wood.bendingStiffness < materialProfile(MaterialKind::FlammableComposite).bendingStiffness,
+            "wood should flex more than flammable composite");
     require(composite.bendingStiffness < materialProfile(MaterialKind::Concrete).bendingStiffness,
             "composite should flex more than concrete");
     require(steel.angularBendHertz < wood.angularBendHertz,
@@ -96,6 +100,29 @@ void materialProfilesPreserveTheRequestedBendingOrder() {
             "steel should be denser than wood");
     require(wood.staticFriction > steel.staticFriction,
             "wood should preserve its distinct contact profile");
+}
+
+void compositeEffectsAreRestrictedToTheirMatchingMaterials() {
+    StructuralWorld world;
+    world.clear();
+    const NodeId a=world.addNode({1.0f,5.0f},true);
+    const NodeId b=world.addNode({5.0f,5.0f},true);
+    const MemberId flammable=world.addMember(a,b,MaterialKind::FlammableComposite);
+    world.ignite({3.0f,5.0f},0.5f);
+    bool ignited=false;
+    for(const auto& member:world.members()) if(member.id==flammable) ignited=member.ignited;
+    require(ignited,"ignite did not ignite flammable composite");
+    for(int i=0;i<720;++i) world.step(1.0f/120.0f);
+    require(world.brokenMemberCount()>0,"ignited composite did not eventually fail");
+
+    world.clear();
+    const NodeId c=world.addNode({1.0f,5.0f},true);
+    const NodeId d=world.addNode({5.0f,5.0f},true);
+    const MemberId explosive=world.addMember(c,d,MaterialKind::ExplosiveComposite);
+    world.explode({3.0f,5.0f},1.0f,18.0f);
+    bool broken=false;
+    for(const auto& member:world.members()) if(member.id==explosive) broken=member.broken;
+    require(broken,"blast did not trigger explosive composite");
 }
 
 void fixedSubstepsAreIndependentOfRenderStepGrouping() {
@@ -158,6 +185,7 @@ int main() {
     run("continuous load contact", loadsContactTheFullLengthOfLongMembers);
     run("full-length heat brush", heatBrushReachesMemberEndpoints);
     run("material bending hierarchy and contact profiles", materialProfilesPreserveTheRequestedBendingOrder);
+    run("composite ignition and explosion effects", compositeEffectsAreRestrictedToTheirMatchingMaterials);
     run("fixed-step determinism across render-step grouping", fixedSubstepsAreIndependentOfRenderStepGrouping);
     run("finite state during extended simulation", longSimulationMaintainsFiniteState);
 
