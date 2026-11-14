@@ -297,9 +297,14 @@ void StructuralWorld::clear() {
 }
 NodeId StructuralWorld::addNode(Vec2 p,bool pinned) {
     const NodeId id=impl_->nextNode++;
-    Particle particle; particle.p=p; particle.previous=p; particle.pinned=pinned;
+    Particle particle;
+    const bool floorBase = p.y <= particle.radius + 0.10f;
+    particle.p=p;
+    if (floorBase) particle.p.y = particle.radius;
+    particle.previous=particle.p;
+    particle.pinned=pinned || floorBase;
     particle.mass=0.5f;
-    particle.inverseMass=pinned?0.0f:1.0f/particle.mass;
+    particle.inverseMass=particle.pinned?0.0f:1.0f/particle.mass;
     impl_->nodes.push_back({id,impl_->particles.size()});
     impl_->particles.push_back(particle);
     impl_->rebuildViews(); return id;
