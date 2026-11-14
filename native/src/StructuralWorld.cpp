@@ -226,7 +226,7 @@ void resolveMemberSegmentContact(MemberData& first, std::size_t firstSegment,
     const float wb0=b0.inverseMass*(1.0f-tc)*(1.0f-tc), wb1=b1.inverseMass*tc*tc;
     const float sum=wa0+wa1+wb0+wb1;
     Vec2 normal{};
-    if(d>1e-6f) {
+    if(d>minimum*0.35f) {
         normal=mul(delta,1.0f/d);
     } else {
         // At an exact centerline crossing, the closest-point delta is zero.
