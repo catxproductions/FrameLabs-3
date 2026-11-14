@@ -8,7 +8,8 @@
 namespace framelabs {
 namespace {
 constexpr float Pi = 3.14159265358979323846f;
-constexpr float Gravity = 9.81f;
+constexpr float Gravity = 9.80665f / MetersPerWorldUnit;
+constexpr float ReferenceMemberAreaM2 = 0.000367f;
 constexpr float GroundY = 0.0f;
 constexpr int SolverIterations = 12;
 constexpr float MaxPhysicsSubstep = 1.0f / 240.0f;
@@ -213,8 +214,8 @@ void resolveLoadLoadContact(LoadData& a, LoadData& b) {
     const Vec2 delta=sub(b.view.position,a.view.position);
     const float d=length(delta), minimum=a.view.radius+b.view.radius;
     if(d>=minimum) return;
-    const float invA=1.0f/std::max(0.1f,a.view.massKg/100.0f);
-    const float invB=1.0f/std::max(0.1f,b.view.massKg/100.0f);
+    const float invA=1.0f/std::max(0.1f,a.view.massKg);
+    const float invB=1.0f/std::max(0.1f,b.view.massKg);
     const float sum=invA+invB;
     if(sum<=1e-8f) return;
     const Vec2 normal=d>1e-6f?mul(delta,1.0f/d):Vec2{1.0f,0.0f};
@@ -278,7 +279,8 @@ struct StructuralWorld::Impl {
             v.stressRatio=m.stress; v.damage=m.damage; v.temperatureC=m.temperature;
             v.maxBendRadians=m.bend; v.yielding=m.stress>.72f; v.broken=m.broken; v.ignited=m.ignited;
             const auto& profile=materialProfile(m.material);
-            const float thickness=(m.role==MemberRole::Slab?.22f:.14f);
+            const float thickness = m.role == MemberRole::Rope ? 0.05f :
+                (m.role == MemberRole::Slab ? 0.22f : 0.14f);
             for(std::size_t i=1;i<m.particles.size();++i) {
                 Vec2 p0=particles[m.particles[i-1]].p, p1=particles[m.particles[i]].p;
                 Vec2 d=sub(p1,p0);
@@ -332,35 +334,70 @@ MemberId StructuralWorld::addMember(NodeId a,NodeId b,MaterialKind material,Memb
     if(a==b)return 0;
     auto* pa=impl_->particleFor(a); auto* pb=impl_->particleFor(b);
     if(!pa||!pb)return 0;
-    for(const auto& m:impl_->memberData) if(!m.broken&&((m.a==a&&m.b==b)||(m.a==b&&m.b==a)))return m.id;
+    for(const auto& existing:impl_->memberData) {
+        if(!existing.broken && existing.role==role &&
+           ((existing.a==a&&existing.b==b)||(existing.a==b&&existing.b==a))) return existing.id;
+    }
     const Vec2 startPosition=pa->p, endPosition=pb->p;
     const float span=distance(startPosition,endPosition); if(span<.15f)return 0;
-    MemberData m; m.id=impl_->nextMember++;m.a=a;m.b=b;m.material=material;m.role=role;m.restLength=span;
+
+    MemberData m;
+    m.id=impl_->nextMember++;m.a=a;m.b=b;m.material=material;m.role=role;
+    m.restLength=span;
     m.restAngle=angleOf(sub(endPosition,startPosition));
     const std::size_t ia=static_cast<std::size_t>(pa-impl_->particles.data());
     const std::size_t ib=static_cast<std::size_t>(pb-impl_->particles.data());
-    m.particles.push_back(ia);
     const auto& profile=materialProfile(material);
-    const float memberMass=std::max(0.1f,profile.density*0.25f*span);
+
+    // Ropes begin with a small hanging curve and reserve length. Their constraints
+    // pull when stretched, but never push when compressed.
+    const float sagClearance=std::max(0.0f,std::min(startPosition.y,endPosition.y)-0.12f);
+    const float sag=role==MemberRole::Rope?std::min(span*0.18f,sagClearance):0.0f;
+    std::vector<Vec2> initialPositions;
+    initialPositions.reserve(MemberSubdivisions+1);
+    initialPositions.push_back(startPosition);
+    for(int i=1;i<MemberSubdivisions;++i) {
+        const float t=static_cast<float>(i)/MemberSubdivisions;
+        Vec2 position=add(startPosition,mul(sub(endPosition,startPosition),t));
+        if(role==MemberRole::Rope) position.y-=4.0f*t*(1.0f-t)*sag;
+        initialPositions.push_back(position);
+    }
+    initialPositions.push_back(endPosition);
+
+    float arcLength=0.0f;
+    for(std::size_t i=1;i<initialPositions.size();++i)
+        arcLength+=distance(initialPositions[i-1],initialPositions[i]);
+    const float memberLengthForMass=role==MemberRole::Rope?arcLength:span;
+    // Density is stored in g/cm³; convert to kg/m³ and multiply by a reference
+    // cross-section and physical member length in metres.
+    const float memberMass=std::max(0.1f,profile.density*1000.0f*
+        ReferenceMemberAreaM2*MetersPerWorldUnit*memberLengthForMass);
     const float endpointMass=memberMass/(2.0f*MemberSubdivisions);
-    // Share member mass with its endpoint nodes so connected members contribute
-    // to node inertia instead of every joint behaving like a massless hinge.
     pa->mass+=endpointMass; pb->mass+=endpointMass;
     pa->inverseMass=pa->pinned?0.0f:1.0f/std::max(0.05f,pa->mass);
     pb->inverseMass=pb->pinned?0.0f:1.0f/std::max(0.05f,pb->mass);
+
+    m.particles.push_back(ia);
     for(int i=1;i<MemberSubdivisions;++i) {
-        const float t=static_cast<float>(i)/MemberSubdivisions;
-        Particle p; p.p=add(startPosition,mul(sub(endPosition,startPosition),t));p.previous=p.p;
+        Particle p; p.p=initialPositions[static_cast<std::size_t>(i)];p.previous=p.p;
         p.mass=memberMass/MemberSubdivisions;
         p.inverseMass=1.0f/std::max(0.05f,p.mass);
         p.radius=.045f;
         m.particles.push_back(impl_->particles.size());impl_->particles.push_back(p);
     }
     m.particles.push_back(ib);
+
+    m.restLength=0.0f;
     for(std::size_t i=1;i<m.particles.size();++i) {
-        auto x=m.particles[i-1],y=m.particles[i];
-        m.axial.push_back({x,y,distance(impl_->particles[x].p,impl_->particles[y].p),.92f});
+        const auto x=m.particles[i-1],y=m.particles[i];
+        const float segmentLength=distance(impl_->particles[x].p,impl_->particles[y].p);
+        const float slack=role==MemberRole::Rope?1.04f:1.0f;
+        const float segmentRest=segmentLength*slack;
+        m.axial.push_back({x,y,segmentRest,.92f});
+        m.restLength+=segmentRest;
     }
+    if(role!=MemberRole::Rope) m.restLength=span;
+
     impl_->memberData.push_back(std::move(m));impl_->rebuildViews();return impl_->memberData.back().id;
 }
 bool StructuralWorld::removeMember(MemberId id) {
@@ -471,7 +508,7 @@ void StructuralWorld::step(float dt) {
         l.view.position.x+=vel.x*damping;
         l.view.position.y+=vel.y*damping-Gravity*dt2;
         if(l.view.position.y<l.view.radius) resolveGroundContact(l.view.position,l.velocity,l.view.radius,dt,materialProfile(MaterialKind::Concrete));
-        const float loadInverseMass=1.0f/std::max(0.1f,l.view.massKg/100.0f);
+        const float loadInverseMass=1.0f/std::max(0.1f,l.view.massKg);
         for(auto& p:w.particles)if(p.inverseMass>0){
             Vec2 delta=sub(p.p,l.view.position);
             float d=length(delta),minD=l.view.radius+p.radius;
@@ -507,31 +544,33 @@ void StructuralWorld::step(float dt) {
             for(const auto& c:m.axial){
                 auto& a=w.particles[c.a];auto& b=w.particles[c.b];
                 Vec2 d=sub(b.p,a.p);float len=length(d);if(len<1e-6f)continue;
+                // Ropes are tension-only: compressed segments remain slack.
+                if(m.role==MemberRole::Rope && len<=c.rest) continue;
                 float wa=a.inverseMass,wb=b.inverseMass,sum=wa+wb;if(sum<=0)continue;
                 float error=(len-c.rest)/len*axialGain;
+                if(m.role==MemberRole::Rope) error=std::max(0.0f,error);
                 Vec2 correction=mul(d,error);
                 a.p=add(a.p,mul(correction,wa/sum));b.p=sub(b.p,mul(correction,wb/sum));
             }
-            // Second-neighbour constraints preserve each member's local curve
-            // while allowing material-dependent elastic bending.
-            for(std::size_t i=1;i+1<m.particles.size();++i){
-                auto& a=w.particles[m.particles[i-1]];auto& b=w.particles[m.particles[i+1]];
-                const float rest=2.0f*m.restLength/MemberSubdivisions;
-                Vec2 d=sub(b.p,a.p);float len=length(d);if(len<1e-5f)continue;
-                float wa=a.inverseMass,wb=b.inverseMass,sum=wa+wb;if(sum<=0)continue;
-                Vec2 correction=mul(d,((len-rest)/len)*bendGain);
-                a.p=add(a.p,mul(correction,wa/sum));b.p=sub(b.p,mul(correction,wb/sum));
-            }
-            // A beam is not a rope: resist distributed curvature by keeping
-            // internal stations close to the endpoint chord. Material-specific
-            // bending compliance still permits a small elastic deflection.
-            auto& beamStart=w.particles[m.particles.front()];
-            auto& beamEnd=w.particles[m.particles.back()];
-            for(std::size_t i=1;i+1<m.particles.size();++i){
-                auto& point=w.particles[m.particles[i]];
-                const float t=static_cast<float>(i)/static_cast<float>(m.particles.size()-1);
-                const Vec2 target=add(beamStart.p,mul(sub(beamEnd.p,beamStart.p),t));
-                point.p=add(point.p,mul(sub(target,point.p),bendGain));
+            if(m.role!=MemberRole::Rope) {
+                // Second-neighbour constraints preserve each beam's local curve.
+                for(std::size_t i=1;i+1<m.particles.size();++i){
+                    auto& a=w.particles[m.particles[i-1]];auto& b=w.particles[m.particles[i+1]];
+                    const float rest=2.0f*m.restLength/MemberSubdivisions;
+                    Vec2 d=sub(b.p,a.p);float len=length(d);if(len<1e-5f)continue;
+                    float wa=a.inverseMass,wb=b.inverseMass,sum=wa+wb;if(sum<=0)continue;
+                    Vec2 correction=mul(d,((len-rest)/len)*bendGain);
+                    a.p=add(a.p,mul(correction,wa/sum));b.p=sub(b.p,mul(correction,wb/sum));
+                }
+                // Beam rigidity: keep interior stations near the endpoint chord.
+                auto& beamStart=w.particles[m.particles.front()];
+                auto& beamEnd=w.particles[m.particles.back()];
+                for(std::size_t i=1;i+1<m.particles.size();++i){
+                    auto& point=w.particles[m.particles[i]];
+                    const float t=static_cast<float>(i)/static_cast<float>(m.particles.size()-1);
+                    const Vec2 target=add(beamStart.p,mul(sub(beamEnd.p,beamStart.p),t));
+                    point.p=add(point.p,mul(sub(target,point.p),bendGain));
+                }
             }
         }
         // Resolve member contacts every solver iteration so structural
@@ -552,7 +591,7 @@ void StructuralWorld::step(float dt) {
     // Re-apply continuous contacts after structural constraints so the load
     // cannot be pushed back through a member by the solver in the same step.
     for(auto& l:w.loadData){
-        const float loadInverseMass=1.0f/std::max(0.1f,l.view.massKg/100.0f);
+        const float loadInverseMass=1.0f/std::max(0.1f,l.view.massKg);
         for(auto& m:w.memberData)if(!m.broken){
             for(std::size_t i=1;i<m.particles.size();++i){
                 resolveLoadSegmentContact(l,w.particles[m.particles[i-1]],w.particles[m.particles[i]],loadInverseMass,dt,materialProfile(m.material),true);
@@ -575,7 +614,9 @@ void StructuralWorld::step(float dt) {
         for(std::size_t i=1;i<m.particles.size();++i){
             span+=distance(w.particles[m.particles[i-1]].p,w.particles[m.particles[i]].p);
         }
-        const float strain=std::fabs(span-m.restLength)/std::max(.001f,m.restLength);
+        const float strain=m.role==MemberRole::Rope
+            ? std::max(0.0f,span-m.restLength)/std::max(.001f,m.restLength)
+            : std::fabs(span-m.restLength)/std::max(.001f,m.restLength);
         float maxAngle=0;
         for(std::size_t i=1;i+1<m.particles.size();++i){
             Vec2 d0=sub(w.particles[m.particles[i]].p,w.particles[m.particles[i-1]].p);
@@ -586,7 +627,8 @@ void StructuralWorld::step(float dt) {
         const float heatStrength=clampf(1.0f-profile.heatWeakening*heat,.08f,1.0f);
         const float remainingIntegrity=std::max(.05f,1.0f-m.damage);
         const float heatEase=heatStrength*remainingIntegrity;
-        const float bendRatio=maxAngle/std::max(.001f,profile.breakBendRadians*heatEase);
+        const float bendRatio=m.role==MemberRole::Rope?0.0f:
+            maxAngle/std::max(.001f,profile.breakBendRadians*heatEase);
         const float strainRatio=strain/std::max(.001f,profile.breakStrain*heatEase);
         m.stress=std::max(bendRatio,strainRatio);
         m.bend=maxAngle;
