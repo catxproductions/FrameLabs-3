@@ -56,7 +56,9 @@ struct MemberData {
     float fatigue=0;
     float stress=0;
     float bend=0;
+    float burnTime=0;
     bool broken=false;
+    bool ignited=false;
 };
 struct NodeData { NodeId id=0; std::size_t particle=0; };
 struct LoadData { LoadView view{}; Vec2 velocity{}; };
@@ -222,7 +224,7 @@ struct StructuralWorld::Impl {
             }
             v.axialStrain=(v.currentLength-m.restLength)/std::max(.001f,m.restLength);
             v.stressRatio=m.stress; v.damage=m.damage; v.temperatureC=m.temperature;
-            v.maxBendRadians=m.bend; v.yielding=m.stress>.72f; v.broken=m.broken;
+            v.maxBendRadians=m.bend; v.yielding=m.stress>.72f; v.broken=m.broken; v.ignited=m.ignited;
             const auto& profile=materialProfile(m.material);
             const float thickness=(m.role==MemberRole::Slab?.22f:.14f);
             for(std::size_t i=1;i<m.particles.size();++i) {
@@ -338,6 +340,47 @@ void StructuralWorld::applyHeat(Vec2 p,float radius,float degreesPerSecond,float
         if(nearestDistance<radius){
             const float falloff=1.0f-nearestDistance/std::max(.01f,radius);
             m.temperature=clampf(m.temperature+degreesPerSecond*dt*falloff,20,1200);
+        }
+    }
+    impl_->rebuildViews();
+}
+void StructuralWorld::ignite(Vec2 p,float radius) {
+    for(auto& m:impl_->memberData) {
+        if(m.broken || m.material!=MaterialKind::FlammableComposite) continue;
+        float nearest=std::numeric_limits<float>::max();
+        for(std::size_t i=1;i<m.particles.size();++i)
+            nearest=std::min(nearest,distanceToSegment(p,impl_->particles[m.particles[i-1]].p,impl_->particles[m.particles[i]].p));
+        if(nearest<=radius) { m.ignited=true; m.temperature=std::max(m.temperature,180.0f); }
+    }
+    impl_->rebuildViews();
+}
+void StructuralWorld::explode(Vec2 p,float radius,float strength) {
+    std::vector<Vec2> centers{p};
+    std::size_t chainCount=0;
+    for(std::size_t ci=0;ci<centers.size() && ci<5;++ci) {
+        const Vec2 center=centers[ci];
+        for(auto& m:impl_->memberData) {
+            if(m.broken) continue;
+            float nearest=std::numeric_limits<float>::max();
+            for(std::size_t i=1;i<m.particles.size();++i)
+                nearest=std::min(nearest,distanceToSegment(center,impl_->particles[m.particles[i-1]].p,impl_->particles[m.particles[i]].p));
+            if(nearest>=radius) continue;
+            if(m.material==MaterialKind::ExplosiveComposite && chainCount<4) {
+                const Vec2 midpoint=mul(add(impl_->particles[m.particles.front()].p,impl_->particles[m.particles.back()].p),0.5f);
+                m.broken=true; centers.push_back(midpoint); ++chainCount; continue;
+            }
+            const float falloff=1.0f-nearest/std::max(0.01f,radius);
+            m.damage=clampf(m.damage+0.55f*falloff,0.0f,0.99f);
+            m.stress=std::max(m.stress,0.85f+0.5f*falloff);
+            if(m.stress>1.0f) m.broken=true;
+        }
+        for(auto& particle:impl_->particles) {
+            if(particle.inverseMass<=0.0f) continue;
+            const Vec2 delta=sub(particle.p,center);
+            const float d=length(delta);
+            if(d<0.001f || d>=radius) continue;
+            const float falloff=1.0f-d/radius;
+            applyParticleImpulse(particle,mul(delta,(strength*falloff)/d),1.0f/60.0f);
         }
     }
     impl_->rebuildViews();
@@ -476,10 +519,15 @@ void StructuralWorld::step(float dt) {
         if(m.stress>.72f)m.fatigue+=dt*(m.stress-.68f)*.42f;
         else m.fatigue=std::max(0.0f,m.fatigue-dt*.08f);
         m.damage=clampf(m.damage+std::max(0.0f,m.stress-.85f)*dt*.16f,0,.99f);
-        if(m.stress>1.0f||m.fatigue>profile.fatigueSeconds){
-            m.broken=true;
+        if(m.ignited && m.material==MaterialKind::FlammableComposite) {
+            m.burnTime+=dt;
+            m.temperature=std::min(1000.0f,m.temperature+115.0f*dt);
+            m.damage=clampf(m.damage+dt*.075f,0.0f,.99f);
+            if(m.burnTime>5.5f || m.damage>.96f) m.broken=true;
+        } else {
+            m.temperature=std::max(20.0f,m.temperature-dt*1.3f);
         }
-        m.temperature=std::max(20.0f,m.temperature-dt*1.3f);
+        if(m.stress>1.0f||m.fatigue>profile.fatigueSeconds) m.broken=true;
     }
     w.rebuildViews();
     }
