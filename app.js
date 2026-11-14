@@ -109,7 +109,7 @@
             else notify("FrameLabs 3 — browser structural sandbox.");
             break;
           }
-          case "reset-view": resetWorld(); notify("View and starter structure reset."); break;
+          case "reset-view": resizeCanvas(); draw(); notify("Viewport refreshed."); break;
           case "workspace-info": notify("Place nodes, connect them, add loads, and heat members. Right-click a node to pin it."); break;
           default: break;
         }
@@ -141,7 +141,7 @@
         <button class="tool" data-tool="delete" aria-pressed="false"><span>⌫</span><b>Delete</b><kbd>6</kbd></button>
         <button class="tool" data-tool="break" aria-pressed="false"><span>⚡</span><b>Break</b><kbd>7</kbd></button>
       </div>
-      <p class="browser-hint" id="toolHint">Select nodes or members. Drag a node to reposition it.</p>
+      <p class="browser-hint" id="toolHint">Build your structure first. Pin supports with right-click, then press Start Test.</p>
       <div class="browser-materials">
         <label for="materialSelect">MEMBER MATERIAL</label>
         <select id="materialSelect">
@@ -150,8 +150,8 @@
         </select>
       </div>
       <div class="browser-sim-actions">
-        <button type="button" id="pauseSimulation">Ⅱ Pause</button>
-        <button type="button" id="resetSimulation">↻ Reset</button>
+        <button type="button" id="startTestSimulation" title="Start or pause the structural test">▶ Start Test</button>
+        <button type="button" id="resetStructure" title="Restore the structure exactly as it was before the latest test" disabled>↻ Reset Structure</button>
         <button type="button" id="stressToggle" aria-pressed="true">Stress: On</button>
         <button type="button" id="gridSnapToggle" aria-pressed="false">Grid snap: Off</button>
         <button type="button" id="clearScene" class="clear-scene-action">Clear scene</button>
@@ -161,7 +161,7 @@
       <h3><b>02</b> SCENE <i></i></h3>
       <div class="scene-list">
         <div class="scene-item current"><span>◈</span><b>Environment<small>Browser simulation</small></b><i>●</i></div>
-        <div class="scene-item"><span>◇</span><b>Structure<small id="structureCount">9 nodes / 16 members</small></b><i>●</i></div>
+        <div class="scene-item"><span>◇</span><b>Structure<small id="structureCount">0 nodes / 0 members</small></b><i>●</i></div>
         <div class="scene-item"><span>▱</span><b>Ground plane<small>Collision surface</small></b><i>●</i></div>
       </div>`;
     const inspector = toolbar.querySelector(".inspector");
@@ -169,8 +169,8 @@
       <h3><b>03</b> INSPECTOR <i></i></h3>
       <div class="nothing-selected" id="selectionSummary"><span>＋</span><div><b>Nothing selected</b><small>Choose a node or member to inspect it.</small></div></div>
       <div class="property-list" id="selectionProperties">
-        <div>NODES <b id="nodeCount">9</b></div><div>MEMBERS <b id="memberCount">16</b></div>
-        <div>FAILED <b id="brokenCount">0</b></div><div>LOADS <b id="loadCount">1</b></div>
+        <div>NODES <b id="nodeCount">0</b></div><div>MEMBERS <b id="memberCount">0</b></div>
+        <div>FAILED <b id="brokenCount">0</b></div><div>LOADS <b id="loadCount">0</b></div>
       </div>`;
 
     const style = document.createElement("style");
@@ -186,6 +186,8 @@
       .browser-sim-actions button{min-height:32px;padding:5px;border:1px solid rgba(141,139,205,.17);border-radius:2px;background:#0c0c14;color:#aaa8c7;font-size:8px}
       .browser-sim-actions button:hover{border-color:#7775c8;color:#fff}
       .browser-sim-actions button[aria-pressed="true"]{border-color:#7775c8;color:#d8d6ff}
+      .browser-sim-actions button:disabled,.browser-tool-grid .tool:disabled{opacity:.38;cursor:not-allowed}
+      .browser-sim-actions button:disabled:hover,.browser-tool-grid .tool:disabled:hover{border-color:rgba(141,139,205,.17);color:#77758f}
       .browser-sim-actions .clear-scene-action{grid-column:1/-1;border-color:rgba(190,104,111,.38);color:#d59a9f}
       .browser-sim-actions .clear-scene-action:hover{border-color:#c87982;color:#ffe0e2}
       .browser-tool-grid .tool{min-width:0}
@@ -228,7 +230,8 @@
     const state = {
       nodes: [], members: [], loads: [], nextNode: 1, nextMember: 1,
       tool: "select", material: "steel", firstNode: null, selectedNode: null,
-      selectedMember: null, selectedLoad: null, dragging: null, paused: false,
+      selectedMember: null, selectedLoad: null, dragging: null, paused: true,
+      testMode: false, testSnapshot: null,
       stress: true, gridSnap: false, gridSize: 24,
       lastTime: 0, accumulator: 0, width: 0, height: 0, ground: 0
     };
@@ -300,30 +303,6 @@
       return state.members[state.members.length - 1];
     }
 
-    function resetWorld() {
-      state.nodes = []; state.members = []; state.loads = [];
-      state.nextNode = 1; state.nextMember = 1;
-      state.firstNode = null; state.selectedNode = null; state.selectedMember = null;
-      state.selectedLoad = null; state.dragging = null;
-      const w = Math.max(420, canvas.clientWidth), h = Math.max(280, canvas.clientHeight);
-      state.width = w; state.height = h;
-      const x = [w * .28, w * .50, w * .72], y = [h * .72, h * .43, h * .15];
-      const grid = [];
-      for (let row = 0; row < 3; row++) {
-        grid[row] = [];
-        for (let col = 0; col < 3; col++) {
-          grid[row][col] = makeNode(x[col], y[row], row === 0);
-          state.nodes.push(grid[row][col]);
-        }
-      }
-      const links = [[0,1],[1,2],[3,4],[4,5],[6,7],[7,8],[0,3],[3,6],[1,4],[4,7],[2,5],[5,8],[0,4],[4,8],[2,4],[4,6]];
-      links.forEach(([a,b], i) => addMember(state.nodes[a], state.nodes[b], "steel"));
-      state.loads.push(makeLoad(w * .50, h * .105, 220));
-      state.ground = h * .82;
-      updateInspector();
-      draw();
-    }
-
     function resizeCanvas() {
       const rect = viewport.getBoundingClientRect();
       if (!rect.width || !rect.height) return;
@@ -333,6 +312,22 @@
         [...state.nodes, ...state.members.flatMap(m => m.points.slice(1, -1)), ...state.loads].forEach(p => {
           p.x *= sx; p.px *= sx; p.y *= sy; p.py *= sy;
         });
+      }
+      if (state.testSnapshot) {
+        const saved = state.testSnapshot;
+        const savedSx = rect.width / Math.max(1, saved.width || oldW);
+        const savedSy = rect.height / Math.max(1, saved.height || oldH);
+        const savedParticles = [
+          ...saved.nodes,
+          ...saved.members.flatMap(member => member.interior),
+          ...saved.loads
+        ];
+        savedParticles.forEach(point => {
+          point.x *= savedSx; point.px *= savedSx;
+          point.y *= savedSy; point.py *= savedSy;
+        });
+        saved.width = rect.width;
+        saved.height = rect.height;
       }
       state.width = rect.width; state.height = rect.height; state.ground = rect.height * .82;
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -403,8 +398,131 @@
       state.selectedMember = null;
       state.selectedLoad = null;
       state.dragging = null;
+      state.testSnapshot = null;
+      state.testMode = false;
+      state.paused = true;
+      state.accumulator = 0;
+      state.lastTime = 0;
+      updateSimulationControls();
       updateInspector();
       draw();
+    }
+
+    function captureBuildSnapshot() {
+      const nodeIndices = new Map(state.nodes.map((node, index) => [node, index]));
+      return {
+        width: state.width,
+        height: state.height,
+        nextNode: state.nextNode,
+        nextMember: state.nextMember,
+        nodes: state.nodes.map(node => ({
+          id: node.id, x: node.x, y: node.y, px: node.px, py: node.py,
+          pinned: node.pinned, radius: node.radius, baseMass: node.baseMass
+        })),
+        members: state.members.map(member => ({
+          id: member.id,
+          a: nodeIndices.get(member.a),
+          b: nodeIndices.get(member.b),
+          material: member.material,
+          rest: member.rest,
+          segmentRest: member.segmentRest,
+          memberMass: member.memberMass,
+          broken: member.broken,
+          breakSegment: member.breakSegment,
+          stress: member.stress,
+          damage: member.damage,
+          fatigue: member.fatigue,
+          temperature: member.temperature,
+          interior: member.points.slice(1, -1).map(point => ({ ...point }))
+        })),
+        loads: state.loads.map(load => ({ ...load }))
+      };
+    }
+
+    function restoreBuildSnapshot(snapshot) {
+      state.nodes = snapshot.nodes.map(node => ({ ...node }));
+      state.members = snapshot.members.map(saved => {
+        const points = [
+          state.nodes[saved.a],
+          ...saved.interior.map(point => ({ ...point })),
+          state.nodes[saved.b]
+        ];
+        const { a, b, interior, ...properties } = saved;
+        return {
+          ...properties,
+          a: state.nodes[a],
+          b: state.nodes[b],
+          points
+        };
+      });
+      state.loads = snapshot.loads.map(load => ({ ...load }));
+      state.nextNode = snapshot.nextNode;
+      state.nextMember = snapshot.nextMember;
+      state.firstNode = null;
+      state.selectedNode = null;
+      state.selectedMember = null;
+      state.selectedLoad = null;
+      state.dragging = null;
+      recalculateNodeMasses();
+      state.accumulator = 0;
+      state.lastTime = 0;
+      updateInspector();
+      draw();
+    }
+
+    function updateSimulationControls() {
+      const startButton = document.getElementById("startTestSimulation");
+      const resetButton = document.getElementById("resetStructure");
+      const clearButton = document.getElementById("clearScene");
+      const materialSelect = document.getElementById("materialSelect");
+      if (startButton) {
+        startButton.textContent = !state.testMode
+          ? "▶ Start Test"
+          : state.paused ? "▶ Resume Test" : "Ⅱ Pause Test";
+        startButton.setAttribute("aria-label", startButton.textContent.trim());
+      }
+      if (resetButton) resetButton.disabled = !state.testMode || !state.testSnapshot;
+      if (clearButton) clearButton.disabled = state.testMode;
+      if (materialSelect) materialSelect.disabled = state.testMode;
+      document.querySelectorAll("[data-tool]").forEach(button => {
+        button.disabled = state.testMode &&
+          ["node", "member", "load", "delete"].includes(button.dataset.tool);
+      });
+    }
+
+    function toggleTestSimulation() {
+      if (!state.testMode) {
+        if (state.nodes.length < 2 || state.members.length < 1) {
+          notify("Build a structure first: add at least two nodes and connect them with a member.");
+          return;
+        }
+        state.testSnapshot = captureBuildSnapshot();
+        state.testMode = true;
+        state.paused = false;
+        notify("Test started. Reset Structure will restore this exact build.");
+      } else {
+        state.paused = !state.paused;
+      }
+      state.accumulator = 0;
+      state.lastTime = 0;
+      updateSimulationControls();
+      draw();
+    }
+
+    function resetStructure() {
+      if (!state.testMode || !state.testSnapshot) {
+        notify("There is no active test to reset. Start a test after building your structure.");
+        return;
+      }
+      const savedBuild = state.testSnapshot;
+      restoreBuildSnapshot(savedBuild);
+      state.testSnapshot = null;
+      state.testMode = false;
+      state.paused = true;
+      setTool("select");
+      updateSimulationControls();
+      draw();
+      notify("Your original structure has been restored. Build mode is ready.");
     }
 
     function snappedPoint(point) {
@@ -469,15 +587,8 @@
       state.material = event.target.value;
       notify("New members will use " + state.material + ".");
     });
-    document.getElementById("pauseSimulation").addEventListener("click", event => {
-      state.paused = !state.paused;
-      event.currentTarget.textContent = state.paused ? "▶ Resume" : "Ⅱ Pause";
-    });
-    document.getElementById("resetSimulation").addEventListener("click", () => {
-      resetWorld(); state.paused = false;
-      document.getElementById("pauseSimulation").textContent = "Ⅱ Pause";
-      notify("Starter structure restored.");
-    });
+    document.getElementById("startTestSimulation").addEventListener("click", toggleTestSimulation);
+    document.getElementById("resetStructure").addEventListener("click", resetStructure);
     document.getElementById("stressToggle").addEventListener("click", event => {
       state.stress = !state.stress;
       event.currentTarget.textContent = "Stress: " + (state.stress ? "On" : "Off");
@@ -491,9 +602,13 @@
       notify(state.gridSnap ? "Grid snapping enabled (24 px)." : "Grid snapping disabled.");
     });
     document.getElementById("clearScene").addEventListener("click", () => {
+      if (state.testMode) {
+        notify("Reset Structure before changing or clearing the build.");
+        return;
+      }
       if (!window.confirm("Clear every node, member, and test load from this scene?")) return;
       clearWorld();
-      notify("Scene cleared. Use Add node and Connect to build a new structure.");
+      notify("Scene cleared. The workspace is empty and ready for a new build.");
     });
 
     function pointerPosition(event) {
@@ -528,10 +643,18 @@
 
     canvas.addEventListener("contextmenu", event => {
       event.preventDefault();
+      if (state.testMode) {
+        notify("Reset Structure to return to build mode before changing supports.");
+        return;
+      }
       const p = pointerPosition(event), node = closestNode(p.x, p.y);
       if (node) { node.pinned = !node.pinned; refreshNodeInverseMass(node); node.px = node.x; node.py = node.y; updateInspector(); draw(); }
     });
     canvas.addEventListener("pointerdown", event => {
+      if (state.testMode && ["node", "member", "load", "delete"].includes(state.tool)) {
+        notify("The structure is locked during a test. Reset Structure to edit your build.");
+        return;
+      }
       const rawPoint = pointerPosition(event);
       const p = rawPoint;
       if (event.button === 2) return;
@@ -593,7 +716,7 @@
       state.selectedNode = node;
       state.selectedMember = member;
       state.selectedLoad = load;
-      if (node && !node.pinned) state.dragging = node;
+      if (node && !node.pinned && !state.testMode) state.dragging = node;
       updateInspector(); draw();
     });
     canvas.addEventListener("pointermove", event => {
@@ -904,14 +1027,17 @@
       }
       updateInspector();
       const status=document.querySelector(".view-status span:first-child");
-      if(status) status.innerHTML="<i></i> "+(state.paused?"PAUSED":"LIVE PHYSICS")+" &nbsp; / &nbsp; "+state.nodes.length+" NODES";
+      const modeLabel = !state.testMode
+        ? "BUILD MODE / SIMULATION NOT STARTED"
+        : state.paused ? "TEST PAUSED / STRUCTURE LOCKED" : "TEST RUNNING / LIVE PHYSICS";
+      if(status) status.innerHTML="<i></i> "+modeLabel+" &nbsp; / &nbsp; "+state.nodes.length+" NODES";
     }
 
     function frame(time) {
       if (!state.lastTime) state.lastTime = time;
       const frameDelta = clamp((time - state.lastTime) / 1000, 0, 0.1);
       state.lastTime = time;
-      if (!state.paused && currentScreen === "workspace") {
+      if (state.testMode && !state.paused && currentScreen === "workspace") {
         const fixedStep = 1 / 120;
         state.accumulator = Math.min(0.1, state.accumulator + frameDelta);
         let steps = 0;
@@ -931,7 +1057,7 @@
     canvas.addEventListener("pointermove", event => {
       state.pointer=pointerPosition(event);
     });
-    resetWorld();
+    clearWorld();
     resizeCanvas();
     window.addEventListener("resize", resizeCanvas);
     document.addEventListener("keydown", event => {
@@ -945,10 +1071,10 @@
       }
       if(event.code==="Space" && !/INPUT|SELECT|TEXTAREA/.test(event.target.tagName)) {
         event.preventDefault();
-        document.getElementById("pauseSimulation").click();
+        document.getElementById("startTestSimulation").click();
       }
       if(event.key.toLowerCase()==="r" && !/INPUT|SELECT|TEXTAREA/.test(event.target.tagName)) {
-        resetWorld(); notify("Starter structure restored.");
+        resetStructure();
       }
     });
     showScreen("menu");
