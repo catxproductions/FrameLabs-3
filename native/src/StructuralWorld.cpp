@@ -31,6 +31,29 @@ float distanceToSegment(Vec2 point, Vec2 a, Vec2 b) {
 float angleOf(Vec2 v) { return std::atan2(v.y, v.x); }
 float wrapAngle(float a) { while(a > Pi) a -= 2*Pi; while(a < -Pi) a += 2*Pi; return a; }
 
+float thermalExpansionPerC(MaterialKind material) {
+    // Exaggerated slightly for visual readability in the sandbox.
+    return material == MaterialKind::Steel ? 0.000035f :
+           material == MaterialKind::Wood ? 0.000018f : 0.000010f;
+}
+float tensileYieldStrain(MaterialKind material) {
+    switch (material) {
+        case MaterialKind::Steel: return 0.018f;
+        case MaterialKind::Wood: return 0.012f;
+        case MaterialKind::Composite:
+        case MaterialKind::ExplosiveComposite:
+        case MaterialKind::FlammableComposite: return 0.006f;
+        case MaterialKind::Concrete: return 0.004f;
+    }
+    return 0.01f;
+}
+float plasticCreepRate(MaterialKind material) {
+    return material == MaterialKind::Steel ? 1.2f : 0.6f;
+}
+float thermalScaleFor(MaterialKind material, float temperatureC) {
+    return 1.0f + thermalExpansionPerC(material) * std::max(0.0f, temperatureC - 20.0f);
+}
+
 struct Particle {
     Vec2 p{}, previous{};
     bool pinned = false;
@@ -58,6 +81,8 @@ struct MemberData {
     float stress=0;
     float bend=0;
     float burnTime=0;
+    float plasticStrain=0;
+    float peakTensileStrain=0;
     bool broken=false;
     bool ignited=false;
 };
@@ -267,7 +292,8 @@ struct StructuralWorld::Impl {
             if(!a||!b) continue;
             MemberView v;
             v.id=m.id; v.nodeA=m.a; v.nodeB=m.b; v.material=m.material; v.role=m.role;
-            v.start=a->p; v.end=b->p; v.restLength=m.restLength;
+            v.start=a->p; v.end=b->p;
+            v.restLength=m.restLength * thermalScaleFor(m.material, m.temperature) * (1.0f + m.plasticStrain);
             // Measure axial extension along the member's centerline. The
             // endpoint chord shortens during bending and must not be mistaken
             // for compressive material strain.
@@ -489,6 +515,7 @@ void StructuralWorld::step(float dt) {
     for(int substep=0;substep<substeps;++substep){
     dt=substepDt;
     const float dt2=dt*dt;
+    for(auto& member:w.memberData) member.peakTensileStrain=0.0f;
     const float damping=std::exp(-0.24f*dt);
     w.time+=dt;
     for(auto& p:w.particles)if(p.inverseMass>0){
@@ -538,16 +565,22 @@ void StructuralWorld::step(float dt) {
             const float stiffness=clampf(1.0f-profile.heatSoftening*heat,.12f,1);
             // Normalize total material stiffness across the solver iterations.
             const float axialTarget=clampf(.92f*stiffness,0.0f,.9999f);
+            const float effectiveRestScale=thermalScaleFor(m.material,m.temperature)*(1.0f+m.plasticStrain);
             const float axialGain=1.0f-std::pow(1.0f-axialTarget,1.0f/SolverIterations);
             const float bendTarget=clampf(profile.bendingStiffness*stiffness,.05f,.999f);
             const float bendGain=1.0f-std::pow(1.0f-bendTarget,1.0f/SolverIterations);
             for(const auto& c:m.axial){
                 auto& a=w.particles[c.a];auto& b=w.particles[c.b];
                 Vec2 d=sub(b.p,a.p);float len=length(d);if(len<1e-6f)continue;
+                const float targetRest=c.rest*effectiveRestScale;
+                // Record tensile extension before positional correction. Otherwise
+                // the constraint solver erases the evidence before failure is checked.
+                const float tensileStrain=std::max(0.0f,(len-targetRest)/std::max(.001f,targetRest));
+                m.peakTensileStrain=std::max(m.peakTensileStrain,tensileStrain);
                 // Ropes are tension-only: compressed segments remain slack.
-                if(m.role==MemberRole::Rope && len<=c.rest) continue;
+                if(m.role==MemberRole::Rope && len<=targetRest) continue;
                 float wa=a.inverseMass,wb=b.inverseMass,sum=wa+wb;if(sum<=0)continue;
-                float error=(len-c.rest)/len*axialGain;
+                float error=(len-targetRest)/len*axialGain;
                 if(m.role==MemberRole::Rope) error=std::max(0.0f,error);
                 Vec2 correction=mul(d,error);
                 a.p=add(a.p,mul(correction,wa/sum));b.p=sub(b.p,mul(correction,wb/sum));
@@ -556,7 +589,7 @@ void StructuralWorld::step(float dt) {
                 // Second-neighbour constraints preserve each beam's local curve.
                 for(std::size_t i=1;i+1<m.particles.size();++i){
                     auto& a=w.particles[m.particles[i-1]];auto& b=w.particles[m.particles[i+1]];
-                    const float rest=2.0f*m.restLength/MemberSubdivisions;
+                    const float rest=2.0f*m.restLength*effectiveRestScale/MemberSubdivisions;
                     Vec2 d=sub(b.p,a.p);float len=length(d);if(len<1e-5f)continue;
                     float wa=a.inverseMass,wb=b.inverseMass,sum=wa+wb;if(sum<=0)continue;
                     Vec2 correction=mul(d,((len-rest)/len)*bendGain);
@@ -627,14 +660,27 @@ void StructuralWorld::step(float dt) {
         const float heatStrength=clampf(1.0f-profile.heatWeakening*heat,.08f,1.0f);
         const float remainingIntegrity=std::max(.05f,1.0f-m.damage);
         const float heatEase=heatStrength*remainingIntegrity;
+        const float effectiveRestLength=m.restLength*thermalScaleFor(m.material,m.temperature)*(1.0f+m.plasticStrain);
+        const float finalTensionStrain=std::max(0.0f,(span-effectiveRestLength)/std::max(.001f,effectiveRestLength));
+        const float tensileStrain=std::max(m.peakTensileStrain,finalTensionStrain);
         const float bendRatio=m.role==MemberRole::Rope?0.0f:
             maxAngle/std::max(.001f,profile.breakBendRadians*heatEase);
-        const float strainRatio=strain/std::max(.001f,profile.breakStrain*heatEase);
+        const float strainRatio=tensileStrain/std::max(.001f,profile.breakStrain*heatEase);
         m.stress=std::max(bendRatio,strainRatio);
         m.bend=maxAngle;
-        if(m.stress>.72f)m.fatigue+=dt*(m.stress-.68f)*.42f;
+
+        // Sustained tension above yield causes permanent elongation. Heat lowers
+        // the yield point and accelerates creep, so hot steel stretches sooner.
+        const float yieldStrain=tensileYieldStrain(m.material)*std::max(.15f,1.0f-profile.heatWeakening*heat);
+        if(tensileStrain>yieldStrain) {
+            m.plasticStrain=std::min(.45f,m.plasticStrain+
+                (tensileStrain-yieldStrain)*plasticCreepRate(m.material)*(1.0f+2.0f*heat)*dt);
+        }
+
+        const float fatigueLimit=profile.fatigueSeconds*std::max(.25f,1.0f-.65f*heat);
+        if(m.stress>.62f)m.fatigue+=dt*(m.stress-.58f)*.75f;
         else m.fatigue=std::max(0.0f,m.fatigue-dt*.08f);
-        m.damage=clampf(m.damage+std::max(0.0f,m.stress-.85f)*dt*.16f,0,.99f);
+        m.damage=clampf(m.damage+std::max(0.0f,m.stress-.78f)*dt*.24f,0,.99f);
         if(m.ignited && m.material==MaterialKind::FlammableComposite) {
             m.burnTime+=dt;
             m.temperature=std::min(1000.0f,m.temperature+115.0f*dt);
@@ -643,7 +689,7 @@ void StructuralWorld::step(float dt) {
         } else {
             m.temperature=std::max(20.0f,m.temperature-dt*1.3f);
         }
-        if(m.stress>1.0f||m.fatigue>profile.fatigueSeconds) m.broken=true;
+        if(m.stress>1.0f||m.fatigue>fatigueLimit) m.broken=true;
     }
     w.rebuildViews();
     }
