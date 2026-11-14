@@ -10,6 +10,12 @@ namespace framelabs {
 using NodeId = std::uint32_t;
 using MemberId = std::uint32_t;
 
+// One simulation grid cell represents 5 ft², so its side is sqrt(5) feet.
+// Native world coordinates are measured in grid cells.
+inline constexpr float GridCellAreaSquareFeet = 5.0f;
+inline constexpr float GridCellSideFeet = 2.2360679775f;
+inline constexpr float MetersPerWorldUnit = GridCellSideFeet * 0.3048f;
+
 struct Vec2 {
     float x = 0.0f;
     float y = 0.0f;
@@ -34,7 +40,8 @@ enum class MemberRole : std::uint8_t {
     Beam,
     Column,
     Brace,
-    Slab
+    Slab,
+    Rope
 };
 
 struct MaterialProfile {
