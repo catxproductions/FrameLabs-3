@@ -18,6 +18,16 @@ FL3 is **not** a 3D block sandbox. The game world is two-dimensional and structu
 - Stress visualization, selection, pause, reset, zoom, and viewport panning.
 - Localized heat brush that raises member temperature and changes material response.
 
+### Physical grid scale
+
+One grid cell represents **5 square feet of area**. Each cell is therefore approximately **2.236 ft × 2.236 ft** (0.6816 m per side). The native and browser-preview solvers convert gravity, member mass, and load mass using this scale. Loads labelled in kilograms are treated as kilograms rather than scaled-down display values.
+
+The material and failure models remain game-tuned approximations, not certified structural-engineering calculations. The grid scale gives the simulation a consistent physical reference; it does not make the solver suitable for real building design.
+
+### Ropes
+
+The Rope tool creates flexible, sagging members. Rope constraints are **tension-only**: they pull when stretched, go slack when compressed, and do not apply beam-style bending rigidity. Use the selected material to choose the rope's density and failure response.
+
 ### Material behaviour
 
 The first material response model is deliberately game-tuned rather than presented as certified engineering analysis:
@@ -39,7 +49,8 @@ These are stylized game units. They are not structural engineering measurements 
 |---|---|
 | Select tool + left click | Select a node or member |
 | Add node tool + left click | Place a node |
-| Connect members + click two nodes | Create a structural member |
+| Connect tool + click two nodes | Create a rigid structural member |
+| Rope tool (T) + click two nodes | Create a flexible tension-only rope |
 | Add load tool + left click | Place a 220 kg test load |
 | Heat brush + hold left click | Heat nearby members |
 | Right click a node | Pin / unpin support |
