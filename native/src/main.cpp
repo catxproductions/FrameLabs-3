@@ -21,7 +21,7 @@ constexpr int W=1600,H=900,Top=58,Side=300;
 const Color BG{8,8,17,255},Panel{12,12,25,255},Panel2{20,20,39,255},Line{55,53,86,255};
 const Color Purple{125,121,207,255},Lilac{197,193,248,255},Text{229,226,250,255},Muted{139,136,171,255};
 enum class Screen{Menu,Game,Settings};
-enum class Tool{Select,Node,Member,Load,Heat,Explode,Ignite};
+enum class Tool{Select,Node,Member,Rope,Load,Heat,Explode,Ignite};
 struct App{
  Screen screen=Screen::Menu; Tool tool=Tool::Select; MaterialKind material=MaterialKind::Steel;
  bool paused=false,stress=true; float zoom=1; Vector2 pan{0,0};
@@ -78,8 +78,17 @@ void drawWorld(const StructuralWorld&w,App&a){
   Color c=m.broken?Color{105,94,111,255}:(a.stress?stressColor(m.stressRatio):materialColor(m.material));
   if(m.yielding&&!m.broken)c=Color{245,156,91,255};
   if(m.ignited&&!m.broken)c=Color{255,126,54,255};
-  for(const auto&s:m.segments){Vector2 center=worldToScreen(s.center,a);float len=s.length*step,thick=std::max(3.0f,s.thickness*step);
-   DrawRectanglePro({center.x,center.y,len,thick},{len/2,thick/2},-s.angleRadians*RAD2DEG,c);
+  for(const auto&s:m.segments){
+   Vector2 center=worldToScreen(s.center,a);
+   float len=s.length*step,thick=std::max(3.0f,s.thickness*step);
+   if(m.role==MemberRole::Rope){
+    const Vector2 direction{std::cos(s.angleRadians),std::sin(s.angleRadians)};
+    const Vec2 worldA{s.center.x-direction.x*s.length*.5f,s.center.y-direction.y*s.length*.5f};
+    const Vec2 worldB{s.center.x+direction.x*s.length*.5f,s.center.y+direction.y*s.length*.5f};
+    DrawLineEx(worldToScreen(worldA,a),worldToScreen(worldB,a),std::max(2.0f,thick*.45f),c);
+   }else{
+    DrawRectanglePro({center.x,center.y,len,thick},{len/2,thick/2},-s.angleRadians*RAD2DEG,c);
+   }
   }
   if(m.id==a.selectedMember){DrawCircleV(worldToScreen(m.start,a),10,Lilac);DrawCircleV(worldToScreen(m.end,a),10,Lilac);}
  }
@@ -88,6 +97,7 @@ void drawWorld(const StructuralWorld&w,App&a){
  if(a.firstNode)for(const auto&n:w.nodes())if(n.id==a.firstNode){Vector2 p=worldToScreen(n.position,a);DrawCircleLines((int)p.x,(int)p.y,17,Purple);}
  EndScissorMode();
  DrawRectangle(14,Top+14,205,28,Color{8,8,18,230});DrawRectangleLines(14,Top+14,205,28,Line);DrawCircle(28,Top+28,4,a.paused?Color{237,173,99,255}:Color{105,196,157,255});DrawText(a.paused?"SIMULATION PAUSED":"LIVE STRUCTURAL PHYSICS",40,Top+22,9,Text);
+ DrawText("GRID SCALE: 5 FT² / CELL · 2.236 FT SIDE",235,Top+23,9,Muted);
  DrawRectangle(14,GetScreenHeight()-42,vw-28,27,Color{8,8,18,220});DrawRectangleLines(14,GetScreenHeight()-42,vw-28,27,Line);DrawText(a.status.c_str(),25,GetScreenHeight()-34,9,Muted);
 }
 void drawSidebar(StructuralWorld&w,App&a){
@@ -95,10 +105,17 @@ void drawSidebar(StructuralWorld&w,App&a){
  const bool compact=height<850;
  DrawRectangle(x,Top,Side,height-Top,Panel);DrawLine(x,Top,x,height,Line);
  DrawText("STRUCTURAL LAB",x+20,80,9,Purple);DrawText("Toolbox",x+20,101,26,Text);DrawLine(x+18,140,x+Side-18,140,Line);DrawText("TOOLS",x+20,158,9,Muted);
- const char* names[]={"Select","Add node","Connect","Add load","Heat","Explode","Ignite"};
- Tool tools[]={Tool::Select,Tool::Node,Tool::Member,Tool::Load,Tool::Heat,Tool::Explode,Tool::Ignite};
+ const char* names[]={"Select","Add node","Connect","Rope","Add load","Heat","Explode","Ignite"};
+ Tool tools[]={Tool::Select,Tool::Node,Tool::Member,Tool::Rope,Tool::Load,Tool::Heat,Tool::Explode,Tool::Ignite};
  const float toolStart=compact?160.0f:180.0f,toolStep=compact?31.0f:37.0f,toolHeight=compact?27.0f:32.0f;
- for(int i=0;i<7;i++)if(button({(float)x+18,toolStart+i*toolStep,Side-36.0f,toolHeight},names[i],a.tool==tools[i])){a.tool=tools[i];a.firstNode=0;a.status=std::string(names[i])+" selected";}
+ const float toolWidth=(Side-48.0f)/2.0f;
+ for(int i=0;i<8;i++){
+  const float bx=static_cast<float>(x+18)+(i%2)*(toolWidth+12.0f);
+  const float by=toolStart+(i/2)*toolStep;
+  if(button({bx,by,toolWidth,toolHeight},names[i],a.tool==tools[i])){
+   a.tool=tools[i];a.firstNode=0;a.status=std::string(names[i])+" selected";
+  }
+ }
  const float materialLine=compact?382.0f:445.0f,materialTitle=compact?395.0f:461.0f,materialStart=compact?414.0f:482.0f,materialStep=compact?30.0f:35.0f,materialHeight=compact?25.0f:28.0f;
  DrawLine(x+18,materialLine,x+Side-18,materialLine,Line);DrawText("MATERIAL",x+20,(int)materialTitle,9,Muted);
  MaterialKind mats[]={MaterialKind::Steel,MaterialKind::Wood,MaterialKind::ExplosiveComposite,MaterialKind::FlammableComposite,MaterialKind::Concrete};
@@ -112,11 +129,11 @@ void drawSidebar(StructuralWorld&w,App&a){
  if(compact){
   DrawText(TextFormat("%i nodes / %i members",(int)w.nodeCount(),(int)w.memberCount()),x+20,height-52,9,Text);
   DrawText(TextFormat("%i failed members",(int)w.brokenMemberCount()),x+20,height-36,8,Color{232,143,116,255});
-  DrawText("MATERIAL RESPONSE / GAME UNITS",x+20,height-17,7,Muted);
+  DrawText("GRID SCALE / 5 FT² PER CELL",x+20,height-17,7,Muted);
  }else{
   DrawText(TextFormat("%i nodes  /  %i members",(int)w.nodeCount(),(int)w.memberCount()),x+20,746,11,Text);
   DrawText(TextFormat("%i failed members",(int)w.brokenMemberCount()),x+20,768,10,Color{232,143,116,255});
-  DrawText("MATERIAL RESPONSE / GAME UNITS",x+20,height-44,8,Muted);
+  DrawText("GRID SCALE / 5 FT² PER CELL",x+20,height-44,8,Muted);
  }
 }
 void input(StructuralWorld&w,App&a){
@@ -128,6 +145,7 @@ void input(StructuralWorld&w,App&a){
  if(IsKeyPressed(KEY_ONE))chooseTool(Tool::Select);
  if(IsKeyPressed(KEY_TWO))chooseTool(Tool::Node);
  if(IsKeyPressed(KEY_THREE))chooseTool(Tool::Member);
+ if(IsKeyPressed(KEY_T))chooseTool(Tool::Rope);
  if(IsKeyPressed(KEY_FOUR))chooseTool(Tool::Load);
  if(IsKeyPressed(KEY_FIVE))chooseTool(Tool::Heat);
  if(IsKeyPressed(KEY_E))chooseTool(Tool::Explode);
@@ -141,7 +159,16 @@ void input(StructuralWorld&w,App&a){
  if(!IsMouseButtonPressed(MOUSE_BUTTON_LEFT)||!inView(mouse))return;
  Vec2 p=screenToWorld(mouse,a);
  if(a.tool==Tool::Node){a.selectedNode=w.addNode(p,false);a.status="Node added";return;}
- if(a.tool==Tool::Member){NodeId n=w.findNodeNear(p,.35f);if(!n){a.status="Connect members by clicking two nodes";return;}if(!a.firstNode){a.firstNode=n;a.status="First node selected — choose the second";return;}MemberId id=w.addMember(a.firstNode,n,a.material);a.firstNode=0;a.selectedMember=id;a.status=id?"Structural member connected":"Could not connect those nodes";return;}
+ if(a.tool==Tool::Member||a.tool==Tool::Rope){
+  NodeId n=w.findNodeNear(p,.35f);
+  if(!n){a.status="Connect by clicking two nodes";return;}
+  if(!a.firstNode){a.firstNode=n;a.status="First node selected — choose the second";return;}
+  const MemberRole role=a.tool==Tool::Rope?MemberRole::Rope:MemberRole::Beam;
+  MemberId id=w.addMember(a.firstNode,n,a.material,role);
+  a.firstNode=0;a.selectedMember=id;
+  a.status=id?(role==MemberRole::Rope?"Flexible rope connected":"Structural member connected"):"Could not connect those nodes";
+  return;
+ }
  if(a.tool==Tool::Load){w.addLoad(p,220);a.status="220 kg test load added";return;}
  if(a.tool==Tool::Explode){w.explode(p,1.65f,18.0f);a.status="In-game blast triggered";return;}
  if(a.tool==Tool::Ignite){w.ignite(p,.55f);a.status="Ignition applied to flammable composite";return;}
