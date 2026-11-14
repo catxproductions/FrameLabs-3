@@ -136,12 +136,14 @@
         <button class="tool selected" data-tool="select" aria-pressed="true"><span>⌖</span><b>Select</b><kbd>1</kbd></button>
         <button class="tool" data-tool="node" aria-pressed="false"><span>＋</span><b>Add node</b><kbd>2</kbd></button>
         <button class="tool" data-tool="member" aria-pressed="false"><span>╱</span><b>Connect</b><kbd>3</kbd></button>
+        <button class="tool" data-tool="rope" aria-pressed="false"><span>≈</span><b>Rope</b><kbd>T</kbd></button>
         <button class="tool" data-tool="load" aria-pressed="false"><span>↓</span><b>Add load</b><kbd>4</kbd></button>
         <button class="tool" data-tool="heat" aria-pressed="false"><span>♨</span><b>Heat brush</b><kbd>5</kbd></button>
         <button class="tool" data-tool="delete" aria-pressed="false"><span>⌫</span><b>Delete</b><kbd>6</kbd></button>
         <button class="tool" data-tool="break" aria-pressed="false"><span>⚡</span><b>Break</b><kbd>7</kbd></button>
       </div>
       <p class="browser-hint" id="toolHint">Build your structure first. Pin supports with right-click, then press Start Test.</p>
+      <p class="browser-hint">WORLD SCALE · 1 GRID CELL = 5 ft² (2.236 ft × 2.236 ft)</p>
       <div class="browser-materials">
         <label for="materialSelect">MEMBER MATERIAL</label>
         <select id="materialSelect">
@@ -198,6 +200,18 @@
     document.head.appendChild(style);
 
     const ctx = canvas.getContext("2d");
+    // One 24 px grid cell represents 5 square feet of plan area.
+    // Physics is simulated in canvas pixels, with physical constants converted from SI.
+    const GRID_CELL_PX = 24;
+    const GRID_CELL_AREA_FT2 = 5;
+    const GRID_CELL_SIDE_FEET = Math.sqrt(GRID_CELL_AREA_FT2);
+    const METERS_PER_GRID_CELL = GRID_CELL_SIDE_FEET * 0.3048;
+    const METERS_PER_PIXEL = METERS_PER_GRID_CELL / GRID_CELL_PX;
+    const GRAVITY_PX_S2 = 9.80665 / METERS_PER_PIXEL;
+    const REFERENCE_MEMBER_AREA_M2 = 0.000367;
+    // Material density values are stored as g/cm³ and converted to kg/m³.
+    // This reference cross-section preserves the former mass scale while
+    // making mass consistent with the stated real-world grid dimensions.
     // Material response follows FrameLabs 2's shared density/contact model.
     // Values are game tuning, not certified structural-engineering properties.
     // Lower bendStiffness means more elastic bending before the failure threshold.
@@ -232,7 +246,7 @@
       tool: "select", material: "steel", firstNode: null, selectedNode: null,
       selectedMember: null, selectedLoad: null, dragging: null, paused: true,
       testMode: false, testSnapshot: null,
-      stress: true, gridSnap: false, gridSize: 24,
+      stress: true, gridSnap: false, gridSize: GRID_CELL_PX,
       lastTime: 0, accumulator: 0, width: 0, height: 0, ground: 0
     };
 
@@ -247,7 +261,7 @@
     };
 
     function makeLoad(x, y, massKg = 220) {
-      const physicalMass = Math.max(0.1, massKg / 100);
+      const physicalMass = Math.max(0.1, massKg);
       return {
         x, y, px: x, py: y, mass: massKg,
         inverseMass: 1 / physicalMass, radius: 10
@@ -270,34 +284,50 @@
       for (const node of state.nodes) refreshNodeInverseMass(node);
     }
 
-    function addMember(a, b, material) {
-      if (!a || !b || a === b || state.members.some(m => !m.broken &&
+    function addMember(a, b, material, kind = "beam") {
+      if (!a || !b || a === b || state.members.some(m => !m.broken && (m.kind || "beam") === kind &&
         ((m.a === a && m.b === b) || (m.a === b && m.b === a)))) return null;
       const span = distance(a, b);
       if (span < 18) return null;
       const profile = materialProfiles[material] || materialProfiles.steel;
+      const sagClearance = Math.max(0, state.ground - Math.max(a.y, b.y) - 4);
+      const sag = kind === "rope" ? Math.min(span * 0.18, sagClearance) : 0;
       const points = [a];
-      const memberMass = Math.max(0.1, profile.density * span / 200);
+      for (let i = 1; i < 5; i++) {
+        const t = i / 5;
+        const x = a.x + (b.x - a.x) * t;
+        const y = a.y + (b.y - a.y) * t + 4 * t * (1 - t) * sag;
+        points.push({ x, y, px: x, py: y, radius: 2.6, mass: 0, inverseMass: 0, material });
+      }
+      points.push(b);
+      const initialSegmentLengths = [];
+      let initialArcLength = 0;
+      for (let i = 1; i < points.length; i++) {
+        const segmentLength = distance(points[i - 1], points[i]);
+        initialSegmentLengths.push(segmentLength);
+        initialArcLength += segmentLength;
+      }
+      const slack = kind === "rope" ? 1.04 : 1;
+      const rest = kind === "rope" ? initialArcLength * slack : span;
+      const segmentRests = initialSegmentLengths.map(length => length * slack);
+      const memberMass = Math.max(
+        0.1,
+        profile.density * 1000 * REFERENCE_MEMBER_AREA_M2 *
+          (kind === "rope" ? initialArcLength : span) * METERS_PER_PIXEL
+      );
       const endpointMass = memberMass / 10;
       a.mass += endpointMass;
       b.mass += endpointMass;
       refreshNodeInverseMass(a);
       refreshNodeInverseMass(b);
-      for (let i = 1; i < 5; i++) {
-        const t = i / 5;
-        const point = {
-          x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t,
-          px: a.x + (b.x - a.x) * t, py: a.y + (b.y - a.y) * t,
-          radius: 2.6, mass: memberMass / 5,
-          inverseMass: 1 / Math.max(0.05, memberMass / 5), material
-        };
-        points.push(point);
+      for (let i = 1; i < points.length - 1; i++) {
+        points[i].mass = memberMass / 5;
+        points[i].inverseMass = 1 / Math.max(0.05, points[i].mass);
       }
-      points.push(b);
       state.members.push({
-        id: state.nextMember++, a, b, points, material,
-        rest: span, segmentRest: span / 5, broken: false,
-        stress: 0, damage: 0, fatigue: 0, temperature: 20,
+        id: state.nextMember++, a, b, points, material, kind,
+        rest, segmentRest: rest / 5, segmentRests,
+        broken: false, stress: 0, damage: 0, fatigue: 0, temperature: 20,
         memberMass
       });
       return state.members[state.members.length - 1];
@@ -341,14 +371,21 @@
     function createMemberFragment(source, a, b, startT, endT, keepOriginalId) {
       const span = distance(a, b);
       if (span < 0.5 || endT - startT < 1e-5) return null;
+      const kind = source.kind || "beam";
+      const isRope = kind === "rope";
       const rest = Math.max(0.5, source.rest * (endT - startT));
-      const originalMass = source.memberMass || (materialProfiles[source.material].density * source.rest / 200);
+      const originalMass = source.memberMass || (
+        materialProfiles[source.material].density * 1000 * REFERENCE_MEMBER_AREA_M2 *
+        source.rest * METERS_PER_PIXEL
+      );
       const memberMass = Math.max(0.01, originalMass * (endT - startT));
+      const sagClearance = Math.max(0, state.ground - Math.max(a.y, b.y) - 4);
+      const sag = isRope ? Math.min(distance(a, b) * 0.18, sagClearance) : 0;
       const points = [a];
       for (let i = 1; i < 5; i++) {
         const t = i / 5;
         const x = a.x + (b.x - a.x) * t;
-        const y = a.y + (b.y - a.y) * t;
+        const y = a.y + (b.y - a.y) * t + 4 * t * (1 - t) * sag;
         points.push({
           x, y, px: x, py: y, radius: 2.6,
           mass: memberMass / 5,
@@ -357,10 +394,15 @@
         });
       }
       points.push(b);
+      const segmentRests = [];
+      for (let i = 1; i < points.length; i++) {
+        segmentRests.push(distance(points[i - 1], points[i]) * (isRope ? 1.04 : 1));
+      }
       return {
         id: keepOriginalId ? source.id : state.nextMember++,
-        a, b, points, material: source.material,
-        rest, segmentRest: rest / 5, broken: false,
+        a, b, points, material: source.material, kind,
+        rest: isRope ? segmentRests.reduce((sum, value) => sum + value, 0) : rest,
+        segmentRest: rest / 5, segmentRests, broken: false,
         stress: source.stress || 0,
         damage: source.damage || 0,
         fatigue: source.fatigue || 0,
@@ -657,8 +699,10 @@
           a: nodeIndices.get(member.a),
           b: nodeIndices.get(member.b),
           material: member.material,
+          kind: member.kind || "beam",
           rest: member.rest,
           segmentRest: member.segmentRest,
+          segmentRests: (member.segmentRests || []).slice(),
           memberMass: member.memberMass,
           broken: member.broken,
           breakSegment: member.breakSegment,
@@ -719,7 +763,7 @@
       if (materialSelect) materialSelect.disabled = state.testMode;
       document.querySelectorAll("[data-tool]").forEach(button => {
         button.disabled = state.testMode &&
-          ["node", "member", "load", "delete"].includes(button.dataset.tool);
+          ["node", "member", "rope", "load", "delete"].includes(button.dataset.tool);
       });
     }
 
@@ -808,7 +852,8 @@
       const hints = {
         select: "Select nodes or members. Drag a node to reposition it. Right-click a node to pin it.",
         node: "Click and drag anywhere in the scene to place a node precisely. Release to set it down.",
-        member: "Click two existing nodes to connect them with the selected material.",
+        member: "Click two existing nodes to connect them with a rigid structural member.",
+        rope: "Click two nodes to connect them with a flexible, tension-only rope.",
         load: "Click in the scene to drop a 220 kg test load.",
         heat: "Hold or drag over a member to heat it and weaken its material response.",
         delete: "Click a node, member, or test load to remove it. Deleting a node also removes its connected members.",
@@ -910,15 +955,17 @@
         draw();
         return;
       }
-      if (state.tool === "member") {
+      if (state.tool === "member" || state.tool === "rope") {
         const node = closestNode(p.x, p.y, 22);
-        if (!node) { notify("Connect members by clicking two nodes."); return; }
+        if (!node) { notify("Connect by clicking two existing nodes."); return; }
         if (!state.firstNode) {
           state.firstNode = node; notify("First node selected. Choose the second node."); draw();
         } else {
-          const member = addMember(state.firstNode, node, state.material);
+          const kind = state.tool === "rope" ? "rope" : "beam";
+          const member = addMember(state.firstNode, node, state.material, kind);
           state.firstNode = null;
           if (!member) notify("Those nodes cannot be connected.");
+          else notify(kind === "rope" ? "Flexible rope connected." : "Structural member connected.");
           updateInspector(); draw();
         }
         return;
@@ -1016,6 +1063,21 @@
       b.x -= ox * wb / weight; b.y -= oy * wb / weight;
     }
 
+    function solveTensionConstraint(a, b, rest, stiffness) {
+      const dx = b.x - a.x, dy = b.y - a.y;
+      const lengthNow = Math.hypot(dx, dy);
+      // A rope can go slack: only extension is corrected, never compression.
+      if (lengthNow <= rest || lengthNow < 0.001) return;
+      const wa = Math.max(0, a.inverseMass || 0);
+      const wb = Math.max(0, b.inverseMass || 0);
+      const weight = wa + wb;
+      if (weight <= 0) return;
+      const correction = ((lengthNow - rest) / lengthNow) * clamp(stiffness, 0, 1);
+      const ox = dx * correction, oy = dy * correction;
+      a.x += ox * wa / weight; a.y += oy * wa / weight;
+      b.x -= ox * wb / weight; b.y -= oy * wb / weight;
+    }
+
     function velocityOf(p, dt) {
       return { x: (p.x - p.px) / dt, y: (p.y - p.py) / dt };
     }
@@ -1039,7 +1101,7 @@
       const vy = (p.y - p.py) * damping;
       p.px = p.x; p.py = p.y;
       p.x += vx;
-      p.y += vy + 620 * dt * dt;
+      p.y += vy + GRAVITY_PX_S2 * dt * dt;
 
       if (p.y > state.ground) {
         p.y = state.ground;
@@ -1049,9 +1111,9 @@
         const groundProfile = materialProfiles.concrete;
         const staticFriction = (materialFriction.staticFriction + groundProfile.staticFriction) * 0.5;
         const dynamicFriction = (materialFriction.dynamicFriction + groundProfile.dynamicFriction) * 0.5;
-        const stopSpeed = staticFriction * 620 * dt;
+        const stopSpeed = staticFriction * GRAVITY_PX_S2 * dt;
         if (Math.abs(velocityX) <= stopSpeed) velocityX = 0;
-        else velocityX -= Math.sign(velocityX) * dynamicFriction * 620 * dt;
+        else velocityX -= Math.sign(velocityX) * dynamicFriction * GRAVITY_PX_S2 * dt;
         const restitution = Math.min(0.35, (materialFriction.restitution + groundProfile.restitution) * 0.5);
         const reboundY = velocityY > 0 ? -velocityY * restitution : 0;
         p.px = p.x - velocityX * dt;
@@ -1213,18 +1275,25 @@
           const bendGain = iterationGain(profile.bendStiffness * thermalStiffness, solverIterations);
           for (let i = 1; i < member.points.length; i++) {
             if (hasFracture && i - 1 === member.breakSegment) continue;
-            solveConstraint(member.points[i - 1], member.points[i], member.segmentRest, axialGain);
+            const segmentRest = member.segmentRests?.[i - 1] ?? member.segmentRest;
+            if (member.kind === "rope") {
+              solveTensionConstraint(member.points[i - 1], member.points[i], segmentRest, axialGain);
+            } else {
+              solveConstraint(member.points[i - 1], member.points[i], segmentRest, axialGain);
+            }
           }
-          for (let i = 1; i + 1 < member.points.length; i++) {
-            if (hasFracture && (i === member.breakSegment || i === member.breakSegment + 1)) continue;
-            solveConstraint(member.points[i - 1], member.points[i + 1],
-              member.segmentRest * 2, bendGain);
+          if (member.kind !== "rope") {
+            for (let i = 1; i + 1 < member.points.length; i++) {
+              if (hasFracture && (i === member.breakSegment || i === member.breakSegment + 1)) continue;
+              solveConstraint(member.points[i - 1], member.points[i + 1],
+                member.segmentRest * 2, bendGain);
+            }
           }
           // Beam rigidity: a structural member must resist distributed curvature,
           // not behave like a chain of freely hinged cloth particles. Project its
           // interior stations toward the endpoint chord with material compliance.
           // Steel yields slightly; wood flexes more; composite stays comparatively rigid.
-          if (!hasFracture) {
+          if (!hasFracture && member.kind !== "rope") {
             const a = member.points[0], b = member.points[member.points.length - 1];
             const beamGain = bendGain;
             for (let i = 1; i < member.points.length - 1; i++) {
@@ -1276,8 +1345,12 @@
         const effectiveCapacity = strengthFactor * remainingIntegrity;
         const bendingCapacity = Math.max(0.08, profile.bend * effectiveCapacity);
         const axialCapacity = Math.max(0.03, profile.strain * effectiveCapacity);
-        const strain = Math.abs(currentLength - member.rest) / Math.max(1, member.rest);
-        member.stress = Math.max(strain / axialCapacity, maxAngle / bendingCapacity);
+        const strain = member.kind === "rope"
+          ? Math.max(0, currentLength - member.rest) / Math.max(1, member.rest)
+          : Math.abs(currentLength - member.rest) / Math.max(1, member.rest);
+        member.stress = member.kind === "rope"
+          ? strain / axialCapacity
+          : Math.max(strain / axialCapacity, maxAngle / bendingCapacity);
         if (member.stress > 0.72) member.fatigue += dt * (member.stress - 0.68) * 0.42;
         else member.fatigue = Math.max(0, member.fatigue - dt * 0.08);
         member.damage = clamp(member.damage + Math.max(0, member.stress - 0.85) * dt * 0.16, 0, 0.99);
@@ -1329,7 +1402,7 @@
             ctx.stroke();
           }
         };
-        ctx.strokeStyle=color;ctx.lineWidth=6;ctx.lineCap="round";ctx.lineJoin="round";
+        ctx.strokeStyle=color;ctx.lineWidth=member.kind==="rope"?2.8:6;ctx.lineCap="round";ctx.lineJoin="round";
         traceMember();
         if (member.temperature>80 && !member.broken) {
           ctx.strokeStyle="rgba(255,139,78,.28)";ctx.lineWidth=12;traceMember();
@@ -1394,6 +1467,7 @@
       if(currentScreen!=="workspace" || event.ctrlKey || event.metaKey || event.altKey) return;
       const shortcuts={"1":"select","2":"node","3":"member","4":"load","5":"heat","6":"delete","7":"break","8":"explode","9":"ignite"};
       if(shortcuts[event.key]) setTool(shortcuts[event.key]);
+      if(event.key.toLowerCase()==="t" && !/INPUT|SELECT|TEXTAREA/.test(event.target.tagName)) setTool("rope");
       if(event.key.toLowerCase()==="g" && !/INPUT|SELECT|TEXTAREA/.test(event.target.tagName)) {
         document.getElementById("gridSnapToggle").click();
       }
