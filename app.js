@@ -910,6 +910,23 @@
       }
     }
 
+
+    function solveLoadLoadContacts() {
+      for(let i=0;i<state.loads.length;i++) {
+        const a=state.loads[i];
+        for(let j=i+1;j<state.loads.length;j++) {
+          const b=state.loads[j],dx=b.x-a.x,dy=b.y-a.y,d=Math.hypot(dx,dy);
+          const minimum=(a.radius||0)+(b.radius||0);
+          if(d>=minimum)continue;
+          const wa=a.inverseMass||0,wb=b.inverseMass||0,sum=wa+wb;
+          if(sum<=1e-8)continue;
+          const nx=d>0.001?dx/d:1,ny=d>0.001?dy/d:0,push=(minimum-d)*0.82;
+          a.x-=nx*push*wa/sum;a.y-=ny*push*wa/sum;
+          b.x+=nx*push*wb/sum;b.y+=ny*push*wb/sum;
+        }
+      }
+    }
+
     function iterationGain(targetStiffness, iterations) {
       const target = clamp(targetStiffness, 0, 0.9999);
       return 1 - Math.pow(1 - target, 1 / Math.max(1, iterations));
@@ -965,6 +982,7 @@
           }
         }
         solveMemberMemberContacts();
+        solveLoadLoadContacts();
         for (const load of state.loads) {
           for (const member of state.members) {
             solveLoadMemberContact(load, member, dt, iteration === solverIterations - 1);
