@@ -222,10 +222,28 @@ void resolveMemberSegmentContact(MemberData& first, std::size_t firstSegment,
     const float d=length(delta);
     const float minimum=std::max(0.12f,(a0.radius+a1.radius+b0.radius+b1.radius)*0.5f);
     if(d>=minimum) return;
-    const Vec2 normal=d>1e-6f?mul(delta,1.0f/d):Vec2{0.0f,1.0f};
     const float wa0=a0.inverseMass*(1.0f-sc)*(1.0f-sc), wa1=a1.inverseMass*sc*sc;
     const float wb0=b0.inverseMass*(1.0f-tc)*(1.0f-tc), wb1=b1.inverseMass*tc*tc;
     const float sum=wa0+wa1+wb0+wb1;
+    Vec2 normal{};
+    if(d>1e-6f) {
+        normal=mul(delta,1.0f/d);
+    } else {
+        // At an exact centerline crossing, the closest-point delta is zero.
+        // Choose the perpendicular of the member whose endpoints are more free
+        // to move, rather than pushing it along its own length.
+        const Particle& firstStart=particles[first.particles.front()];
+        const Particle& firstEnd=particles[first.particles.back()];
+        const Particle& secondStart=particles[second.particles.front()];
+        const Particle& secondEnd=particles[second.particles.back()];
+        const float firstEndpointMobility=firstStart.inverseMass+firstEnd.inverseMass;
+        const float secondEndpointMobility=secondStart.inverseMass+secondEnd.inverseMass;
+        const Vec2 chosen = secondEndpointMobility>=firstEndpointMobility ? v : u;
+        const float chosenLength=length(chosen);
+        normal=chosenLength>1e-6f
+            ? Vec2{-chosen.y/chosenLength,chosen.x/chosenLength}
+            : Vec2{0.0f,1.0f};
+    }
     if(sum<=1e-8f) return;
 
     // Contacts must move the connected member, not just its interior sample
