@@ -1072,7 +1072,7 @@
       if(event.key==="Escape" && currentScreen==="workspace"){showScreen("menu");return;}
       if(event.key==="Escape" && currentScreen==="settings"){showScreen(returnScreen);return;}
       if(currentScreen!=="workspace" || event.ctrlKey || event.metaKey || event.altKey) return;
-      const shortcuts={"1":"select","2":"node","3":"member","4":"load","5":"heat","6":"delete","7":"break"};
+      const shortcuts={"1":"select","2":"node","3":"member","4":"load","5":"heat","6":"delete","7":"break","8":"explode","9":"ignite"};
       if(shortcuts[event.key]) setTool(shortcuts[event.key]);
       if(event.key.toLowerCase()==="g" && !/INPUT|SELECT|TEXTAREA/.test(event.target.tagName)) {
         document.getElementById("gridSnapToggle").click();
