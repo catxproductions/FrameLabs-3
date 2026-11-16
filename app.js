@@ -1384,8 +1384,12 @@
           const thermalStiffness = 1 - profile.heatSoftening * heat;
           const thermalScale = 1 + (profile.thermalExpansion || 0) * Math.max(0, member.temperature - 20);
           const effectiveRestScale = thermalScale * (1 + (member.plasticStrain || 0));
+          const strengthFactor = Math.max(0.08, 1 - profile.heatWeakening * heat);
+          const remainingIntegrity = Math.max(0.05, 1 - member.damage);
+          const tensileCapacity = Math.max(0.012, profile.strain * strengthFactor * remainingIntegrity);
           const axialGain = iterationGain(profile.stiffness * thermalStiffness, solverIterations);
           const bendGain = iterationGain(profile.bendStiffness * thermalStiffness, solverIterations);
+          let releasedDuringSolve = false;
           for (let i = 1; i < member.points.length; i++) {
             if (hasFracture && i - 1 === member.breakSegment) continue;
             const baseSegmentRest = member.segmentRests?.[i - 1] ?? member.segmentRest;
@@ -1393,12 +1397,23 @@
             const segmentLength = distance(member.points[i - 1], member.points[i]);
             const tensileStrain = Math.max(0, (segmentLength - segmentRest) / Math.max(0.5, segmentRest));
             member.peakTensileStrain = Math.max(member.peakTensileStrain, tensileStrain);
+
+            // Do not project an already-failed member back toward its rest length.
+            // That correction would inject a large artificial impulse into the
+            // connected structure before the normal end-of-step failure check.
+            if (!member.broken && tensileStrain > tensileCapacity) {
+              member.broken = true;
+              releasedDuringSolve = true;
+              break;
+            }
+
             if (member.kind === "rope") {
               solveTensionConstraint(member.points[i - 1], member.points[i], segmentRest, axialGain);
             } else {
               solveConstraint(member.points[i - 1], member.points[i], segmentRest, axialGain);
             }
           }
+          if (releasedDuringSolve) continue;
           if (member.kind !== "rope") {
             for (let i = 1; i + 1 < member.points.length; i++) {
               if (hasFracture && (i === member.breakSegment || i === member.breakSegment + 1)) continue;
