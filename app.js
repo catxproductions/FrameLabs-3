@@ -1359,24 +1359,20 @@
         const thermalScale = 1 + (profile.thermalExpansion || 0) * Math.max(0, member.temperature - 20);
         const effectiveRestScale = thermalScale * (1 + (member.plasticStrain || 0));
         let maximumStrain = 0;
-        let weakestSegment = -1;
 
         for (let i = 1; i < member.points.length; i++) {
           const baseSegmentRest = member.segmentRests?.[i - 1] ?? member.segmentRest;
           const segmentRest = baseSegmentRest * effectiveRestScale;
           const segmentLength = distance(member.points[i - 1], member.points[i]);
           const tensileStrain = Math.max(0, (segmentLength - segmentRest) / Math.max(0.5, segmentRest));
-          if (tensileStrain > maximumStrain) {
-            maximumStrain = tensileStrain;
-            weakestSegment = i - 1;
-          }
+          maximumStrain = Math.max(maximumStrain, tensileStrain);
         }
 
         member.peakTensileStrain = maximumStrain;
-        if (weakestSegment >= 0 && maximumStrain > tensileCapacity) {
-          member.broken = true;
-          member.breakSegment = weakestSegment;
-        }
+        // Automatic failure releases the member as a whole, matching the
+        // existing post-solver fracture path. Do not leave the remaining links
+        // actively pulling after one segment has already exceeded capacity.
+        if (maximumStrain > tensileCapacity) member.broken = true;
       }
 
       for (let iteration = 0; iteration < solverIterations; iteration++) {
