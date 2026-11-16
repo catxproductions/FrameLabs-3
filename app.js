@@ -775,6 +775,75 @@
       });
     }
 
+    // Rebuild each intact member's hidden simulation stations from its current
+    // endpoints before the first physics step. In build mode, users can drag a
+    // node after connecting a member; the endpoints move, but the old interior
+    // Verlet particles otherwise remain behind. The solver then tries to repair
+    // a badly kinked chain in one frame, which can inject enormous energy.
+    //
+    // Keep the member's stored rest lengths and mass: this removes stale geometry
+    // and stale velocity without erasing intentional pre-load/tension.
+    function prepareStructureForTest() {
+      state.dragging = null;
+      state.firstNode = null;
+
+      for (const node of state.nodes) {
+        node.px = node.x;
+        node.py = node.y;
+      }
+      for (const load of state.loads) {
+        load.px = load.x;
+        load.py = load.y;
+      }
+
+      for (const member of state.members) {
+        if (member.broken || !member.a || !member.b) {
+          for (const point of member.points || []) {
+            point.px = point.x;
+            point.py = point.y;
+          }
+          continue;
+        }
+
+        const a = member.a;
+        const b = member.b;
+        const span = distance(a, b);
+        if (!Number.isFinite(span) || span < 0.001) {
+          for (const point of member.points || []) {
+            point.px = point.x;
+            point.py = point.y;
+          }
+          continue;
+        }
+
+        const isRope = member.kind === "rope";
+        const sagClearance = Math.max(0, state.ground - Math.max(a.y, b.y) - 4);
+        const sag = isRope ? Math.min(span * 0.18, sagClearance) : 0;
+        const memberMass = Math.max(0.1, member.memberMass || 0.1);
+        const points = [a];
+
+        for (let i = 1; i < 5; i++) {
+          const t = i / 5;
+          const x = a.x + (b.x - a.x) * t;
+          const y = a.y + (b.y - a.y) * t + 4 * t * (1 - t) * sag;
+          const pointMass = memberMass / 5;
+          points.push({
+            x, y, px: x, py: y,
+            radius: 2.6,
+            mass: pointMass,
+            inverseMass: 1 / Math.max(0.05, pointMass),
+            material: member.material
+          });
+        }
+
+        points.push(b);
+        member.points = points;
+        member.peakTensileStrain = 0;
+      }
+
+      recalculateNodeMasses();
+    }
+
     function toggleTestSimulation() {
       if (!state.testMode) {
         if (state.nodes.length < 2 || state.members.length < 1) {
@@ -785,6 +854,7 @@
         // The automatic joints are generated only for the live test instance.
         state.testSnapshot = captureBuildSnapshot();
         const connectedJoints = connectBuildIntersections();
+        prepareStructureForTest();
         state.testMode = true;
         state.paused = false;
         notify(connectedJoints
