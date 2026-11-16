@@ -1342,7 +1342,43 @@
       for (const load of state.loads) integrateParticle(load, dt, materialProfiles.concrete);
 
       const solverIterations = 14;
-      for (const member of state.members) member.peakTensileStrain = 0;
+
+      // Test a member's current tensile strain before positional constraints
+      // can pull an already-failed member back toward its rest length. Without
+      // this pre-solver fracture check, an overloaded member can move an entire
+      // connected structure during the 14 projection passes and only then snap.
+      for (const member of state.members) {
+        member.peakTensileStrain = 0;
+        if (member.broken) continue;
+
+        const profile = materialProfiles[member.material];
+        const heat = clamp((member.temperature - 20) / 850, 0, 1);
+        const strengthFactor = Math.max(0.08, 1 - profile.heatWeakening * heat);
+        const remainingIntegrity = Math.max(0.05, 1 - member.damage);
+        const tensileCapacity = Math.max(0.012, profile.strain * strengthFactor * remainingIntegrity);
+        const thermalScale = 1 + (profile.thermalExpansion || 0) * Math.max(0, member.temperature - 20);
+        const effectiveRestScale = thermalScale * (1 + (member.plasticStrain || 0));
+        let maximumStrain = 0;
+        let weakestSegment = -1;
+
+        for (let i = 1; i < member.points.length; i++) {
+          const baseSegmentRest = member.segmentRests?.[i - 1] ?? member.segmentRest;
+          const segmentRest = baseSegmentRest * effectiveRestScale;
+          const segmentLength = distance(member.points[i - 1], member.points[i]);
+          const tensileStrain = Math.max(0, (segmentLength - segmentRest) / Math.max(0.5, segmentRest));
+          if (tensileStrain > maximumStrain) {
+            maximumStrain = tensileStrain;
+            weakestSegment = i - 1;
+          }
+        }
+
+        member.peakTensileStrain = maximumStrain;
+        if (weakestSegment >= 0 && maximumStrain > tensileCapacity) {
+          member.broken = true;
+          member.breakSegment = weakestSegment;
+        }
+      }
+
       for (let iteration = 0; iteration < solverIterations; iteration++) {
         for (const member of state.members) {
           const hasFracture = member.broken && Number.isInteger(member.breakSegment);
