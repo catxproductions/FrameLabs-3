@@ -42,11 +42,12 @@
       const floors = getWorldFloors(ground);
       const spawned = [];
       const initialCount = occupants.length;
+      const totalAfterSpawn = Math.min(MAX_OCCUPANTS, initialCount + amount);
 
       for (let i = 0; i < amount && occupants.length < MAX_OCCUPANTS; i++) {
         const slot = initialCount + i;
         const floorY = floors[slot % floors.length];
-        const x = clamp(width * ((slot + 1) / (amount + 1)), 24, width - 24);
+        const x = clamp(width * ((slot + 1) / (totalAfterSpawn + 1)), 24, width - 24);
         const id = "occupant-" + nextId++;
         const occupant = {
           id,
