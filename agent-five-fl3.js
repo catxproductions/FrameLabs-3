@@ -258,8 +258,9 @@
       this.policyStandardDeviation=clamp(num(options.policyStandardDeviation,0.2),0.05,0.5);
       this.trainingOptions=options.trainingOptions||{};
     }
-    setPanic(value){this.panic=clamp(num(value,this.panic),0,1);if(this.panic>=1)this.disable("panic-limit");return this.panic;}
+    setPanic(value){if(this.disabled)return this.panic;this.panic=clamp(num(value,this.panic),0,1);if(this.panic>=1)this.disable("panic-limit");return this.panic;}
     updatePanicFromEnvironment(p,dt=0) {
+      if(this.disabled)return this.panic;
       if(Number.isFinite(p.panic))return this.setPanic(p.panic);
       const thermal=clamp((num(p.temperature,20)-45)/500,0,1),smoke=clamp(num(p.smokeDensity),0,1);
       const fire=clamp(num(p.fireIntensity),0,1),structure=clamp(num(p.structuralDanger),0,1);
