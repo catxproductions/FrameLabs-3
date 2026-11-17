@@ -17,6 +17,7 @@ FL3 is **not** a 3D block sandbox. The game world is two-dimensional and structu
 - Material selection for steel, wood, composite, and concrete.
 - Stress visualization, selection, pause, reset, zoom, and viewport panning.
 - Localized heat brush that raises member temperature and changes material response.
+- Structural navigation assemblies: ladders, stairs, and elevator shafts attach to supporting nodes or member segments, follow their motion, and become gravity-driven rigid falling assemblies when their support fails.
 
 ### Physical grid scale
 
@@ -155,7 +156,7 @@ A panic value of 1.0 (100%) disables the occupant. The physics layer can also di
 
 **Browser-preview integration:** `occupant-simulation.js` connects this neural module to the multi-floor navigation graph. Start a structural test, place at least one exit before starting the test, then use **Spawn 12** in the occupant population panel. Each occupant receives an independent brain, perception state, memory, and PPO training history. The navigation graph supplies a stable route prior; Agent Five controls steering variation and braking. Occupants are affected by gravity and can stand on intact, approximately horizontal structural members; breaking a support causes them to fall to the next available surface or ground. The neural jump output is intentionally gated off by default until the host simulation provides a validated jump opportunity and collision support. The adapter computes local smoke, fire, debris, structural-danger, wall-distance, and crowd-density observations, then reports route progress and successful exits as learning feedback. Population simulation is stepped only while the structural test is running; reset and clear operations also clear the active population.
 
-The occupant runtime is deliberately lightweight: occupants are abstract simulation agents, not individually deformable rigid bodies. The browser preview owns their movement and rendering, while the neural network owns action selection and the world-systems module owns navigation and environmental observations. The native C++ executable remains a separate implementation and does not yet load these JavaScript systems.
+The occupant runtime is deliberately lightweight: occupants are abstract simulation agents, not individually deformable rigid bodies. The browser preview owns their movement and rendering, while the neural network owns action selection and the world-systems module owns navigation and environmental observations. The native C++ executable now has its own structural connector physics and native stair/ladder/elevator tools. Browser Agent Five population remains a browser-preview feature and is not yet integrated into the native C++ executable.
 
 
 ## Structural destruction, effects, and building navigation
@@ -174,6 +175,12 @@ Fractures emit localized dust and material-dependent sparks or splinters. The ef
 | Exit | Click a floor edge | Marks a safe destination |
 
 Navigation links and exits are saved in the build snapshot and restored by Reset Structure. Select Delete and click a connector or exit to remove it. When a stair, ladder, or elevator landing is placed on a structural node or member, its endpoints attach to that geometry and move with the structure. If an attachment fails or the two landings separate beyond the connector's allowed deformation, the complete assembly is released as a falling rigid connector; falling connectors no longer appear as usable evacuation routes. Falling stairs and elevator shafts respond to gravity and can land on the ground or an intact horizontal structural member. The navigation graph connects same-floor points with walking edges and different-floor stops through supported ladders, stairs, or elevators. Its route planner selects a reachable exit using weighted path costs.
+
+### Native structural connector physics
+
+The Windows edition includes native ladder, stairs, and elevator tools. Place each connector by clicking two landing points on structural nodes or non-rope member segments. The connector endpoints bind to those supports and update as the attached structure moves. If an attachment disappears or the landings separate beyond the connector's permitted deformation, the assembly is released with inherited linear/angular motion and falls under native gravity. Falling connectors collide with the ground and intact horizontal structural members. The elevator shaft is rendered using the same rigid transform as its falling physics body.
+
+Use **Ladder**, **Stairs**, or **Elevator** from the Windows toolbox (keyboard shortcuts: L, S, and V). Each connector requires two landing clicks. A connector placed without valid support geometry releases into free fall when the simulation starts.
 
 ### Agent Five navigation adapter
 
