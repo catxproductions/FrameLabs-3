@@ -104,3 +104,47 @@ test("navigation items can be deleted by clicking their marker", () => {
   assert.equal(systems.removeNavigationAt(30, 40), true);
   assert.equal(systems.getExitCount(), 0);
 });
+
+test("route queries do not mutate saved navigation objects", () => {
+  const systems = createWorldSystems();
+  systems.addConnector("stairs", { x: 100, y: 80 }, { x: 100, y: 180 });
+  systems.addExit({ x: 130, y: 180 });
+  const before = systems.captureNavigation();
+  for (let i = 0; i < 8; i++) assert.ok(systems.findRouteToExit(40, 80, 180));
+  assert.deepEqual(systems.captureNavigation(), before);
+  assert.equal("nodeA" in systems.getConnectors()[0], false);
+  assert.equal("nodeIndex" in systems.getExits()[0], false);
+});
+
+test("particle emission is bounded and ignores invalid time steps", () => {
+  const systems = createWorldSystems();
+  systems.emitDust(20, 30, 1e9, "concrete");
+  systems.emitSmoke(20, 30, 1e9);
+  assert.ok(systems.getParticleCount() <= 200);
+  systems.updateParticles(NaN, { wind: Infinity });
+  assert.ok(systems.getParticles().every(p =>
+    [p.x, p.y, p.vx, p.vy, p.radius, p.life].every(Number.isFinite)
+  ));
+});
+
+test("navigation restore rejects malformed links and keeps generated ids unique", () => {
+  const systems = createWorldSystems();
+  systems.restoreNavigation({
+    connectors: [
+      { id: 0, kind: "stairs", a: { x: 10, y: 20 }, b: { x: 10, y: 90 } },
+      { id: 1, kind: "ladder", a: { x: 30, y: 20 }, b: { x: 30, y: 90 } },
+      { id: 1, kind: "elevator", a: { x: 50, y: 20 }, b: { x: 50, y: 90 } },
+      { id: 4, kind: "stairs", a: { x: 0, y: 0 }, b: { x: 1, y: 1 } }
+    ],
+    exits: [{ id: 0, x: 100, y: 90 }, { id: 1, x: 130, y: 90 }]
+  });
+  assert.equal(systems.getConnectorCount(), 3);
+  assert.equal(systems.getExitCount(), 2);
+  const connectorIds = systems.getConnectors().map(link => link.id);
+  const exitIds = systems.getExits().map(exit => exit.id);
+  assert.equal(new Set(connectorIds).size, connectorIds.length);
+  assert.equal(new Set(exitIds).size, exitIds.length);
+  const added = systems.addConnector("stairs", { x: 180, y: 20 }, { x: 180, y: 90 });
+  assert.ok(added);
+  assert.ok(!connectorIds.includes(added.id));
+});
