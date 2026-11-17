@@ -825,8 +825,10 @@
       if (clearButton) clearButton.disabled = state.testMode;
       if (materialSelect) materialSelect.disabled = state.testMode;
       document.querySelectorAll("[data-tool]").forEach(button => {
-        button.disabled = state.testMode &&
-          ["node", "member", "rope", "load", "delete", "ladder", "stairs", "elevator", "exit"].includes(button.dataset.tool);
+        const buildOnly = ["node", "member", "rope", "load", "delete", "ladder", "stairs", "elevator", "exit"];
+        const testOnly = ["break", "explode", "ignite"];
+        button.disabled = (state.testMode && buildOnly.includes(button.dataset.tool)) ||
+          (!state.testMode && testOnly.includes(button.dataset.tool));
       });
     }
 
@@ -1087,6 +1089,10 @@
         notify("The structure is locked during a test. Reset Structure to edit your build.");
         return;
       }
+      if (!state.testMode && ["break", "explode", "ignite"].includes(state.tool)) {
+        notify("Start the structural test before using destruction or ignition tools.");
+        return;
+      }
       const rawPoint = pointerPosition(event);
       const p = rawPoint;
       if (event.button === 2) return;
@@ -1232,8 +1238,11 @@
           if (profile.flammability > 0 && member.temperature >= (profile.ignitionTemperature || 240)) {
             member.ignited = true;
           }
-          if (profile.explosive && member.temperature >= (profile.ignitionTemperature || 270)) {
-            member.explosionRequested = true;
+          if ((profile.explosive || profile.flammability > 0) &&
+              member.temperature >= (profile.ignitionTemperature || 270)) {
+            member.ignited = true;
+            member.fireTimer = 0;
+            member.smokeTimer = 0;
           }
         }
       }
