@@ -26,6 +26,8 @@
     let fractureCount = 0;
 
     function addParticle(kind, x, y, vx, vy, radius, life, material) {
+      const values = [x, y, vx, vy, radius, life];
+      if (!values.every(Number.isFinite) || radius <= 0 || life <= 0) return false;
       if (particles.length >= MAX_PARTICLES) {
         let weakest = 0;
         for (let i = 1; i < particles.length; i++) {
@@ -41,13 +43,15 @@
         seed: Math.random() * Math.PI * 2
       });
       emittedParticleCount++;
+      return true;
     }
 
     function emitDust(x, y, amount = 18, material = "concrete", strength = 1) {
-      const count = Math.max(1, Math.floor(amount));
+      const count = clamp(Math.floor(finite(amount)), 0, 120);
+      const intensity = clamp(finite(strength, 1), 0.2, 4);
       for (let i = 0; i < count; i++) {
         const angle = Math.random() * Math.PI * 2;
-        const speed = (18 + Math.random() * 115) * Math.max(0.2, strength);
+        const speed = (18 + Math.random() * 115) * intensity;
         addParticle("dust", x + (Math.random() - 0.5) * 9, y + (Math.random() - 0.5) * 9,
           Math.cos(angle) * speed, -Math.abs(Math.sin(angle) * speed) - 12,
           2 + Math.random() * 4, 1.8 + Math.random() * 3.8, material);
@@ -55,24 +59,29 @@
     }
 
     function emitSparks(x, y, amount = 7, strength = 1) {
-      for (let i = 0; i < amount; i++) {
+      const count = clamp(Math.floor(finite(amount)), 0, 80);
+      const intensity = clamp(finite(strength, 1), 0.2, 4);
+      for (let i = 0; i < count; i++) {
         const angle = -Math.PI * (0.15 + Math.random() * 0.7);
-        const speed = (70 + Math.random() * 260) * Math.max(0.2, strength);
+        const speed = (70 + Math.random() * 260) * intensity;
         addParticle("spark", x, y, Math.cos(angle) * speed, Math.sin(angle) * speed,
           1 + Math.random() * 1.5, 0.28 + Math.random() * 0.52, "steel");
       }
     }
 
     function emitSmoke(x, y, amount = 3, density = 1) {
-      for (let i = 0; i < amount; i++) {
+      const count = clamp(Math.floor(finite(amount)), 0, 80);
+      const opacity = clamp(finite(density, 1), 0.05, 3);
+      for (let i = 0; i < count; i++) {
         addParticle("smoke", x + (Math.random() - 0.5) * 12, y,
           (Math.random() - 0.5) * 32, -22 - Math.random() * 48,
-          6 + Math.random() * 7, (4.5 + Math.random() * 4) * density, "smoke");
+          6 + Math.random() * 7, (4.5 + Math.random() * 4) * opacity, "smoke");
       }
     }
 
     function emitFlame(x, y, amount = 2) {
-      for (let i = 0; i < amount; i++) {
+      const count = clamp(Math.floor(finite(amount)), 0, 80);
+      for (let i = 0; i < count; i++) {
         addParticle("flame", x + (Math.random() - 0.5) * 12, y + (Math.random() - 0.5) * 8,
           (Math.random() - 0.5) * 26, -30 - Math.random() * 65,
           3 + Math.random() * 5, 0.24 + Math.random() * 0.42, "fire");
@@ -190,9 +199,10 @@
     }
 
     function updateFire(dt, world) {
-      const members = world.members || [];
+      const members = Array.isArray(world.members) ? world.members : [];
       const profiles = world.materialProfiles || {};
-      const burning = members.filter(member => member.ignited && !member.broken && !member.detached);
+      const burning = members.filter(member => member && Array.isArray(member.points) &&
+        member.points.length > 0 && member.ignited && !member.broken && !member.detached);
       for (const member of burning) {
         const profile = profiles[member.material] || {};
         member.temperature = Math.min(1100, finite(member.temperature, 20) + dt * (profile.burnRate || 95));
@@ -213,7 +223,8 @@
 
         // Heat transfers to nearby members, not merely to decorative particles.
         for (const target of members) {
-          if (target === member || target.broken || target.detached) continue;
+          if (target === member || !Array.isArray(target.points) || target.points.length < 2 ||
+              target.broken || target.detached) continue;
           let nearest = Infinity;
           for (let i = 1; i < target.points.length; i++) {
             nearest = Math.min(nearest, distance(nearestPointOnSegment(center,
@@ -240,8 +251,8 @@
     function updateDebris(dt, world) {
       const ground = finite(world.ground, 0);
       const width = Math.max(1, finite(world.width, 100000));
-      const members = world.members || [];
-      const loads = world.loads || [];
+      const members = Array.isArray(world.members) ? world.members : [];
+      const loads = Array.isArray(world.loads) ? world.loads : [];
       const wind = finite(world.wind, 0);
       for (const body of debris) {
         body.age += dt;
@@ -279,7 +290,8 @@
         // own solver constraints and cannot be dragged around by visual particles.
         const radius = body.radius;
         for (const member of members) {
-          if (member.broken || member.detached) continue;
+          if (!member || !Array.isArray(member.points) || member.points.length < 2 ||
+              member.broken || member.detached) continue;
           for (let i = 1; i < member.points.length; i++) {
             const hit = nearestPointOnSegment(body, member.points[i - 1], member.points[i]);
             let dx = body.x - hit.x, dy = body.y - hit.y;
@@ -333,29 +345,34 @@
       }
     }
 
-    function updateParticles(dt, world) {
+    function updateParticles(dt, world = {}) {
+      const safeDt = clamp(finite(dt), 0, 0.05);
       const wind = finite(world.wind, 0);
       for (const particle of particles) {
-        particle.age += dt;
-        particle.life -= dt;
+        if (![particle.x, particle.y, particle.vx, particle.vy, particle.radius, particle.life].every(Number.isFinite)) {
+          particle.life = 0;
+          continue;
+        }
+        particle.age += safeDt;
+        particle.life -= safeDt;
         const isSmoke = particle.kind === "smoke";
         const isDust = particle.kind === "dust";
         const isFlame = particle.kind === "flame";
         if (isSmoke) {
-          particle.vx += (wind * 8 + (Math.random() - 0.5) * 14) * dt;
-          particle.vy -= 12 * dt;
-          particle.radius += 3.5 * dt;
+          particle.vx += (wind * 8 + (Math.random() - 0.5) * 14) * safeDt;
+          particle.vy -= 12 * safeDt;
+          particle.radius += 3.5 * safeDt;
         } else if (isDust) {
-          particle.vx += wind * 3 * dt;
-          particle.vy -= 8 * dt;
-          particle.radius += 1.4 * dt;
+          particle.vx += wind * 3 * safeDt;
+          particle.vy -= 8 * safeDt;
+          particle.radius += 1.4 * safeDt;
         } else {
-          particle.vy += GRAVITY * 0.32 * dt;
-          particle.vx *= Math.pow(0.985, dt * 60);
-          if (isFlame) particle.radius *= Math.max(0.1, 1 - dt * 1.9);
+          particle.vy += GRAVITY * 0.32 * safeDt;
+          particle.vx *= Math.pow(0.985, safeDt * 60);
+          if (isFlame) particle.radius *= Math.max(0.1, 1 - safeDt * 1.9);
         }
-        particle.x += particle.vx * dt;
-        particle.y += particle.vy * dt;
+        particle.x += particle.vx * safeDt;
+        particle.y += particle.vy * safeDt;
       }
       for (let i = particles.length - 1; i >= 0; i--) {
         if (particles[i].life <= 0 || particles[i].radius < 0.35) particles.splice(i, 1);
@@ -471,17 +488,21 @@
     }
 
     function findRouteToExit(x, y, ground = 0) {
-      if (!exits.length) return null;
+      if (!exits.length || !Number.isFinite(x) || !Number.isFinite(y)) return null;
       const nodes = [];
+      const connectorNodeIndices = new Map();
+      const exitNodeIndices = new Map();
       const addNode = (point, type, id) => {
         nodes.push({ x: point.x, y: point.y, type, id, edges: [] });
         return nodes.length - 1;
       };
-      connectors.forEach(link => {
-        link.nodeA = addNode(link.a, "connector", link.id);
-        link.nodeB = addNode(link.b, "connector", link.id);
-      });
-      exits.forEach(exit => { exit.nodeIndex = addNode(exit, "exit", exit.id); });
+      for (const link of connectors) {
+        connectorNodeIndices.set(link.id, {
+          a: addNode(link.a, "connector", link.id),
+          b: addNode(link.b, "connector", link.id)
+        });
+      }
+      for (const exit of exits) exitNodeIndices.set(exit.id, addNode(exit, "exit", exit.id));
 
       const connect = (a, b, cost, connectorKind = "walk") => {
         nodes[a].edges.push({ to: b, cost, connectorKind });
@@ -490,17 +511,16 @@
       for (let i = 0; i < nodes.length; i++) {
         for (let j = i + 1; j < nodes.length; j++) {
           if (floorIndexAt(nodes[i].y, ground) === floorIndexAt(nodes[j].y, ground)) {
-            const d = distance(nodes[i], nodes[j]);
-            connect(i, j, d, "walk");
+            connect(i, j, distance(nodes[i], nodes[j]), "walk");
           }
         }
       }
       for (const link of connectors) {
-        const a = link.nodeA, b = link.nodeB;
-        const d = distance(nodes[a], nodes[b]);
+        const indices = connectorNodeIndices.get(link.id);
+        const d = distance(nodes[indices.a], nodes[indices.b]);
         const multiplier = link.kind === "ladder" ? 1.85 : link.kind === "stairs" ? 1.28 : 0.82;
         const waitPenalty = link.kind === "elevator" ? 90 : 0;
-        connect(a, b, d * multiplier + waitPenalty, link.kind);
+        connect(indices.a, indices.b, d * multiplier + waitPenalty, link.kind);
       }
 
       const distances = Array(nodes.length).fill(Infinity);
@@ -508,11 +528,12 @@
       const visited = Array(nodes.length).fill(false);
       const startFloor = floorIndexAt(y, ground);
       for (let i = 0; i < nodes.length; i++) {
-        if (floorIndexAt(nodes[i].y, ground) !== startFloor) continue;
-        distances[i] = distance({ x, y }, nodes[i]);
+        if (floorIndexAt(nodes[i].y, ground) === startFloor) distances[i] = distance({ x, y }, nodes[i]);
       }
       if (!distances.some(Number.isFinite)) return null;
 
+      // Dijkstra's algorithm. Navigation graphs are intentionally compact, so a
+      // simple array-based priority selection avoids an additional dependency.
       for (let iteration = 0; iteration < nodes.length; iteration++) {
         let current = -1, best = Infinity;
         for (let i = 0; i < nodes.length; i++) {
@@ -521,6 +542,7 @@
         if (current < 0) break;
         visited[current] = true;
         for (const edge of nodes[current].edges) {
+          if (visited[edge.to]) continue;
           const candidate = distances[current] + edge.cost;
           if (candidate < distances[edge.to]) {
             distances[edge.to] = candidate;
@@ -529,17 +551,23 @@
         }
       }
 
-      let bestExit = null, bestCost = Infinity;
+      let bestExit = null, bestCost = Infinity, bestExitIndex = -1;
       for (const exit of exits) {
-        const cost = distances[exit.nodeIndex];
-        if (cost < bestCost) { bestCost = cost; bestExit = exit; }
+        const index = exitNodeIndices.get(exit.id);
+        const cost = distances[index];
+        if (cost < bestCost) { bestCost = cost; bestExit = exit; bestExitIndex = index; }
       }
       if (!bestExit || !Number.isFinite(bestCost)) return null;
+
       const path = [];
-      let cursor = bestExit.nodeIndex;
-      while (cursor !== null && cursor >= 0) {
-        path.unshift({ x: nodes[cursor].x, y: nodes[cursor].y, type: nodes[cursor].type,
-          id: nodes[cursor].id, connectorKind: previous[cursor]?.connectorKind || "walk" });
+      let cursor = bestExitIndex;
+      const visitedPath = new Set();
+      while (cursor !== null && cursor >= 0 && !visitedPath.has(cursor)) {
+        visitedPath.add(cursor);
+        path.unshift({
+          x: nodes[cursor].x, y: nodes[cursor].y, type: nodes[cursor].type,
+          id: nodes[cursor].id, connectorKind: previous[cursor]?.connectorKind || "walk"
+        });
         cursor = previous[cursor] ? previous[cursor].from : null;
       }
       return {
@@ -702,13 +730,32 @@
     }
 
     function restoreNavigation(snapshot) {
-      connectors.length = 0; exits.length = 0;
-      for (const link of (snapshot && snapshot.connectors) || []) {
-        connectors.push({ id: link.id, kind: link.kind, a: { ...link.a }, b: { ...link.b } });
+      connectors.length = 0;
+      exits.length = 0;
+      const savedConnectors = Array.isArray(snapshot?.connectors) ? snapshot.connectors : [];
+      const savedExits = Array.isArray(snapshot?.exits) ? snapshot.exits : [];
+      const usedConnectorIds = new Set();
+      const usedExitIds = new Set();
+      for (const link of savedConnectors) {
+        if (!link || !["ladder", "stairs", "elevator"].includes(link.kind) ||
+            !link.a || !link.b || ![link.a.x, link.a.y, link.b.x, link.b.y].every(Number.isFinite) ||
+            distance(link.a, link.b) < 28) continue;
+        const id = Number.isInteger(link.id) && link.id > 0 && !usedConnectorIds.has(link.id)
+          ? link.id : Math.max(1, ...usedConnectorIds) + 1;
+        usedConnectorIds.add(id);
+        connectors.push({ id, kind: link.kind, a: { x: link.a.x, y: link.a.y }, b: { x: link.b.x, y: link.b.y } });
       }
-      for (const exit of (snapshot && snapshot.exits) || []) exits.push({ ...exit });
-      nextConnectorId = Math.max(1, finite(snapshot && snapshot.nextConnectorId, connectors.length + 1));
-      nextExitId = Math.max(1, finite(snapshot && snapshot.nextExitId, exits.length + 1));
+      for (const exit of savedExits) {
+        if (!exit || !Number.isFinite(exit.x) || !Number.isFinite(exit.y)) continue;
+        const id = Number.isInteger(exit.id) && exit.id > 0 && !usedExitIds.has(exit.id)
+          ? exit.id : Math.max(1, ...usedExitIds) + 1;
+        usedExitIds.add(id);
+        exits.push({ id, x: exit.x, y: exit.y });
+      }
+      nextConnectorId = Math.max(Math.max(0, ...usedConnectorIds) + 1,
+        Math.floor(finite(snapshot?.nextConnectorId, 1)), 1);
+      nextExitId = Math.max(Math.max(0, ...usedExitIds) + 1,
+        Math.floor(finite(snapshot?.nextExitId, 1)), 1);
     }
 
     function clearDynamic() {
@@ -719,6 +766,7 @@
       clearDynamic();
       connectors.length = 0; exits.length = 0;
       nextConnectorId = 1; nextExitId = 1; nextDebrisId = 1;
+      emittedParticleCount = 0; fractureCount = 0;
     }
 
     return {
