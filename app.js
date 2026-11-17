@@ -1831,7 +1831,11 @@
         if (steps === 12) state.accumulator = 0;
       } else {
         state.accumulator = 0;
-        if (currentScreen === "workspace") worldSystems.updateParticles(frameDelta, { width: state.width, ground: state.ground });
+        // Visual particles continue in build mode, but a paused test freezes
+        // its particles along with the rest of the simulation.
+        if (!state.testMode && currentScreen === "workspace") {
+          worldSystems.updateParticles(frameDelta, { width: state.width, ground: state.ground });
+        }
       }
       draw();
       requestAnimationFrame(frame);
