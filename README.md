@@ -153,7 +153,9 @@ A panic value of 1.0 (100%) disables the occupant. The physics layer can also di
 
 **Training compatibility:** FL3 uses a fresh FL3-specific model because the meanings of its 16 inputs and four actions differ from Agent Five's original environment. The original project's protected trained model parameters are not copied. Each FL3 brain learns through its own PPO rollouts and experience; population descendants can inherit and mutate a parent brain using `createPopulation(size, { parent })`.
 
-**Current integration boundary:** the script is loaded by the browser preview and exposes `window.FrameLabs3AgentFive`. The native C++ executable does not yet call this JavaScript module, and the browser simulation does not yet create floor-based occupants or connect their actions to the structural solver. Those are subsequent integration tasks.
+**Browser-preview integration:** `occupant-simulation.js` connects this neural module to the multi-floor navigation graph. Start a structural test, place at least one exit before starting the test, then use **Spawn 12** in the occupant population panel. Each occupant receives an independent brain, perception state, memory, and PPO training history. The navigation graph supplies a stable route prior; Agent Five controls steering variation, braking, and jump requests. The adapter computes local smoke, fire, debris, structural-danger, wall-distance, and crowd-density observations, then reports route progress and successful exits as learning feedback. Population simulation is stepped only while the structural test is running; reset and clear operations also clear the active population.
+
+The occupant runtime is deliberately lightweight: occupants are abstract simulation agents, not individually deformable rigid bodies. The browser preview owns their movement and rendering, while the neural network owns action selection and the world-systems module owns navigation and environmental observations. The native C++ executable remains a separate implementation and does not yet load these JavaScript systems.
 
 
 ## Structural destruction, effects, and building navigation
@@ -180,4 +182,4 @@ The browser exposes `window.FrameLabs3Navigation`:
 - `findRouteToExit(x, y)` returns the nearest reachable exit, route cost, floor difference, direction, and route points.
 - `getOccupantPerception(x, y, extras)` creates the FL3 Agent Five perception object, including floor/exit distances, smoke density, fire intensity, and debris clearance.
 
-This provides the navigation and perception interface for the FL3 Agent Five occupant brain. This implementation adds the building connectors, exits, route graph, and perception adapter; it does **not** yet spawn or run an occupant population in the structural scene. The native C++ executable is also still a separate implementation and does not yet consume these browser JavaScript systems.
+This provides the navigation and perception interface used by the FL3 Agent Five occupant runtime. The browser preview can spawn occupants across detected floor levels and route them through connectors to a reachable exit. The native C++ executable is still a separate implementation and does not yet consume these browser JavaScript systems.
