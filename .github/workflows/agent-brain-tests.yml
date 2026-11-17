@@ -23,6 +23,7 @@ jobs:
         run: |
           node --check agent-five-fl3.js
           node --check world-systems.js
+          node --check occupant-simulation.js
           node --check app.js
       - name: Run FL3 systems and neural tests
-        run: node --test tests/agent_five_fl3_tests.js tests/world_systems_tests.js
+        run: node --test tests/agent_five_fl3_tests.js tests/world_systems_tests.js tests/occupant_simulation_tests.js
