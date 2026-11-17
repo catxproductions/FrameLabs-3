@@ -23,6 +23,9 @@
     if (!agentApi || !worldSystems || typeof agentApi.OccupantBrain !== "function") {
       throw new Error("Occupant simulation requires Agent Five and an FL3 world-systems instance.");
     }
+    // No jumpable obstacle/collision model exists in the preview yet. A host must
+    // explicitly validate a jump opportunity before the neural jump output is used.
+    const canJump = typeof options.canJump === "function" ? options.canJump : () => false;
 
     const occupants = [];
     let nextId = 1;
