@@ -173,7 +173,7 @@ Fractures emit localized dust and material-dependent sparks or splinters. The ef
 | Elevator | Click two floor stops | Adds a lift connection with a small wait-cost |
 | Exit | Click a floor edge | Marks a safe destination |
 
-Navigation links and exits are saved in the build snapshot and restored by Reset Structure. Select Delete and click a connector or exit to remove it. The navigation graph connects same-floor points with walking edges and different-floor stops through ladders, stairs, or elevators. Its route planner selects a reachable exit using weighted path costs.
+Navigation links and exits are saved in the build snapshot and restored by Reset Structure. Select Delete and click a connector or exit to remove it. When a stair, ladder, or elevator landing is placed on a structural node or member, its endpoints attach to that geometry and move with the structure. If an attachment fails or the two landings separate beyond the connector's allowed deformation, the complete assembly is released as a falling rigid connector; falling connectors no longer appear as usable evacuation routes. Falling stairs and elevator shafts respond to gravity and can land on the ground or an intact horizontal structural member. The navigation graph connects same-floor points with walking edges and different-floor stops through supported ladders, stairs, or elevators. Its route planner selects a reachable exit using weighted path costs.
 
 ### Agent Five navigation adapter
 
