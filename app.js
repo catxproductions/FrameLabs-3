@@ -131,25 +131,38 @@
     const toolbar = document.querySelector(".toolbar");
     const toolsSection = toolbar.querySelector(".tool-section");
     toolsSection.innerHTML = `
-      <h3><b>01</b> TOOLS <i></i></h3>
-      <div class="tool-grid browser-tool-grid">
-        <button class="tool selected" data-tool="select" aria-pressed="true"><span>⌖</span><b>Select</b><kbd>1</kbd></button>
-        <button class="tool" data-tool="node" aria-pressed="false"><span>＋</span><b>Add node</b><kbd>2</kbd></button>
-        <button class="tool" data-tool="member" aria-pressed="false"><span>╱</span><b>Connect</b><kbd>3</kbd></button>
-        <button class="tool" data-tool="rope" aria-pressed="false"><span>≈</span><b>Rope</b><kbd>T</kbd></button>
-        <button class="tool" data-tool="load" aria-pressed="false"><span>↓</span><b>Add load</b><kbd>4</kbd></button>
-        <button class="tool" data-tool="heat" aria-pressed="false"><span>♨</span><b>Heat brush</b><kbd>5</kbd></button>
-        <button class="tool" data-tool="delete" aria-pressed="false"><span>⌫</span><b>Delete</b><kbd>6</kbd></button>
-        <button class="tool" data-tool="break" aria-pressed="false"><span>⚡</span><b>Break</b><kbd>7</kbd></button>
-        <button class="tool" data-tool="explode" aria-pressed="false"><span>✹</span><b>Explode</b><kbd>8</kbd></button>
-        <button class="tool" data-tool="ignite" aria-pressed="false"><span>♨</span><b>Ignite</b><kbd>9</kbd></button>
-        <button class="tool" data-tool="ladder" aria-pressed="false"><span>↕</span><b>Ladder</b><kbd>L</kbd></button>
-        <button class="tool" data-tool="stairs" aria-pressed="false"><span>⌁</span><b>Stairs</b><kbd>S</kbd></button>
-        <button class="tool" data-tool="elevator" aria-pressed="false"><span>⇵</span><b>Elevator</b><kbd>E</kbd></button>
-        <button class="tool" data-tool="exit" aria-pressed="false"><span>⇥</span><b>Exit</b><kbd>X</kbd></button>
+      <h3><b>01</b> BUILDING MODES <i></i></h3>
+      <div class="build-mode-switch">
+        <button class="mode-option selected" type="button" data-build-mode="frame" aria-pressed="true">Frame Mode</button>
+        <button class="mode-option" type="button" data-build-mode="floor" aria-pressed="false">Floor Mode</button>
+      </div>
+      <div id="frameModeTools">
+        <div class="tool-grid browser-tool-grid">
+          <button class="tool selected" data-tool="select" aria-pressed="true"><span>⌖</span><b>Select</b><kbd>1</kbd></button>
+          <button class="tool" data-tool="node" aria-pressed="false"><span>＋</span><b>Add node</b><kbd>2</kbd></button>
+          <button class="tool" data-tool="member" aria-pressed="false"><span>╱</span><b>Connect</b><kbd>3</kbd></button>
+          <button class="tool" data-tool="rope" aria-pressed="false"><span>≈</span><b>Rope</b><kbd>T</kbd></button>
+          <button class="tool" data-tool="load" aria-pressed="false"><span>↓</span><b>Add load</b><kbd>4</kbd></button>
+          <button class="tool" data-tool="heat" aria-pressed="false"><span>♨</span><b>Heat brush</b><kbd>5</kbd></button>
+          <button class="tool" data-tool="delete" aria-pressed="false"><span>⌫</span><b>Delete</b><kbd>6</kbd></button>
+          <button class="tool" data-tool="break" aria-pressed="false"><span>⚡</span><b>Break</b><kbd>7</kbd></button>
+          <button class="tool" data-tool="explode" aria-pressed="false"><span>✹</span><b>Explode</b><kbd>8</kbd></button>
+          <button class="tool" data-tool="ignite" aria-pressed="false"><span>♨</span><b>Ignite</b><kbd>9</kbd></button>
+          <button class="tool" data-tool="ladder" aria-pressed="false"><span>↕</span><b>Ladder</b><kbd>L</kbd></button>
+          <button class="tool" data-tool="stairs" aria-pressed="false"><span>⌁</span><b>Stairs</b><kbd>S</kbd></button>
+          <button class="tool" data-tool="elevator" aria-pressed="false"><span>⇵</span><b>Elevator</b><kbd>E</kbd></button>
+          <button class="tool" data-tool="exit" aria-pressed="false"><span>⇥</span><b>Exit</b><kbd>X</kbd></button>
+        </div>
+      </div>
+      <div id="floorModeTools" hidden>
+        <div class="tool-grid browser-tool-grid">
+          <button class="tool selected" data-tool="floor" aria-pressed="true"><span>▱</span><b>Floor</b><kbd>F</kbd></button>
+          <button class="tool" data-tool="wall" aria-pressed="false"><span>▥</span><b>Wall</b><kbd>W</kbd></button>
+        </div>
+        <p class="browser-hint">Drag between frame members. Floors snap level; walls snap plumb.</p>
       </div>
       <p class="browser-hint" id="toolHint">Build your structure first. Pin supports with right-click, then press Start Test.</p>
-      <p class="browser-hint">WORLD SCALE · 1 GRID CELL = 5 ft² (2.236 ft × 2.236 ft)</p>
+      <p class="browser-hint">WORLD SCALE · 1 GRID CELL = 25 FT × 25 FT (625 ft²)</p>
       <div class="browser-materials">
         <label for="materialSelect">MEMBER MATERIAL</label>
         <select id="materialSelect">
@@ -217,6 +230,11 @@
       .browser-population-actions button:hover{border-color:#7775c8;color:#fff}
       .browser-population-actions button:disabled{opacity:.38;cursor:not-allowed}
       #populationStatus{margin:0;color:#77758f;font-size:8px;line-height:1.5}
+      .build-mode-switch{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:0 0 10px}
+      .mode-option{min-width:0;min-height:32px;padding:5px;border:1px solid rgba(141,139,205,.2);border-radius:3px;background:#0b0b15;color:#8e8cae;font-size:9px;font-weight:700}
+      .mode-option.selected{border-color:#8986d8;background:rgba(92,89,165,.22);color:#e1dfff}
+      .mode-option:disabled{opacity:.4;cursor:not-allowed}
+      #frameModeTools[hidden],#floorModeTools[hidden]{display:none!important}
       .browser-tool-grid .tool{min-width:0;min-height:36px}
       .browser-tool-grid .tool b{font-size:9px}
       #selectionSummary{min-height:52px}
@@ -240,11 +258,11 @@
       addConnector: (kind, a, b, anchors) => worldSystems.addConnector(kind, a, b, anchors),
       addExit: point => worldSystems.addExit(point)
     });
-    // One 24 px grid cell represents 5 square feet of plan area.
+    // One 24 px grid cell represents a 25 ft × 25 ft building bay.
     // Physics is simulated in canvas pixels, with physical constants converted from SI.
     const GRID_CELL_PX = 24;
-    const GRID_CELL_AREA_FT2 = 5;
-    const GRID_CELL_SIDE_FEET = Math.sqrt(GRID_CELL_AREA_FT2);
+    const GRID_CELL_AREA_FT2 = 625;
+    const GRID_CELL_SIDE_FEET = 25;
     const METERS_PER_GRID_CELL = GRID_CELL_SIDE_FEET * 0.3048;
     const METERS_PER_PIXEL = METERS_PER_GRID_CELL / GRID_CELL_PX;
     const GRAVITY_PX_S2 = 9.80665 / METERS_PER_PIXEL;
@@ -306,7 +324,8 @@
     };
     const state = {
       nodes: [], members: [], loads: [], nextNode: 1, nextMember: 1,
-      tool: "select", material: "steel", firstNode: null, selectedNode: null,
+      tool: "select", buildMode: "frame", panelDraft: null,
+      material: "steel", firstNode: null, selectedNode: null,
       selectedMember: null, selectedLoad: null, dragging: null, paused: true,
       firstNavPoint: null, testMode: false, testSnapshot: null,
       stress: true, gridSnap: false, gridSize: GRID_CELL_PX,
@@ -372,7 +391,9 @@
         const t = i / 5;
         const x = a.x + (b.x - a.x) * t;
         const y = a.y + (b.y - a.y) * t + 4 * t * (1 - t) * sag;
-        points.push({ x, y, px: x, py: y, radius: 2.6, mass: 0, inverseMass: 0, material });
+        points.push({ x, y, px: x, py: y,
+          radius: kind === "floor" ? 5.2 : kind === "wall" ? 4.5 : 2.6,
+          mass: 0, inverseMass: 0, material });
       }
       points.push(b);
       const initialSegmentLengths = [];
@@ -385,9 +406,10 @@
       const slack = kind === "rope" ? 1.04 : 1;
       const rest = kind === "rope" ? initialArcLength * slack : span;
       const segmentRests = initialSegmentLengths.map(length => length * slack);
+      const sectionFactor = kind === "floor" ? 2.2 : kind === "wall" ? 1.7 : 1;
       const memberMass = Math.max(
         0.1,
-        profile.density * 1000 * REFERENCE_MEMBER_AREA_M2 *
+        profile.density * 1000 * REFERENCE_MEMBER_AREA_M2 * sectionFactor *
           (kind === "rope" ? initialArcLength : span) * METERS_PER_PIXEL
       );
       const endpointMass = memberMass / 10;
@@ -464,7 +486,8 @@
         const x = a.x + (b.x - a.x) * t;
         const y = a.y + (b.y - a.y) * t + 4 * t * (1 - t) * sag;
         points.push({
-          x, y, px: x, py: y, radius: 2.6,
+          x, y, px: x, py: y,
+          radius: kind === "floor" ? 5.2 : kind === "wall" ? 4.5 : 2.6,
           mass: memberMass / 5,
           inverseMass: 1 / Math.max(0.05, memberMass / 5),
           material: source.material
@@ -880,7 +903,7 @@
       if (clearButton) clearButton.disabled = state.testMode;
       if (materialSelect) materialSelect.disabled = state.testMode;
       document.querySelectorAll("[data-tool]").forEach(button => {
-        const buildOnly = ["node", "member", "rope", "load", "delete", "ladder", "stairs", "elevator", "exit"];
+        const buildOnly = ["node", "member", "rope", "load", "delete", "ladder", "stairs", "elevator", "exit", "floor", "wall"];
         const testOnly = ["break", "explode", "ignite"];
         button.disabled = (state.testMode && buildOnly.includes(button.dataset.tool)) ||
           (!state.testMode && testOnly.includes(button.dataset.tool));
@@ -937,6 +960,7 @@
         const sagClearance = Math.max(0, state.ground - Math.max(a.y, b.y) - 4);
         const sag = isRope ? Math.min(span * 0.18, sagClearance) : 0;
         const memberMass = Math.max(0.1, member.memberMass || 0.1);
+        const memberRadius = member.kind === "floor" ? 5.2 : member.kind === "wall" ? 4.5 : 2.6;
         const points = [a];
 
         for (let i = 1; i < 5; i++) {
@@ -946,7 +970,7 @@
           const pointMass = memberMass / 5;
           points.push({
             x, y, px: x, py: y,
-            radius: 2.6,
+            radius: memberRadius,
             mass: pointMass,
             inverseMass: 1 / Math.max(0.05, pointMass),
             material: member.material
@@ -997,6 +1021,7 @@
       state.testSnapshot = null;
       state.testMode = false;
       state.paused = true;
+      state.buildMode="frame";
       setTool("select");
       updateSimulationControls();
       draw();
@@ -1010,6 +1035,63 @@
         x: Math.round(point.x / step) * step,
         y: Math.round(point.y / step) * step
       };
+    }
+
+    function findPanelSupport(x, y) {
+      let bestDistance=25,best=null;
+      for(const member of state.members){
+        if(member.broken||member.detached||member.kind==="rope")continue;
+        for(let i=1;i<member.points.length;i++){
+          const a=member.points[i-1],b=member.points[i],dx=b.x-a.x,dy=b.y-a.y;
+          const t=clamp(((x-a.x)*dx+(y-a.y)*dy)/Math.max(1,dx*dx+dy*dy),0,1);
+          const point={x:a.x+dx*t,y:a.y+dy*t},d=distance({x,y},point);
+          if(d<bestDistance){bestDistance=d;best={...point,member,distance:d};}
+        }
+      }
+      return best;
+    }
+    function panelGeometry(draft){
+      if(!draft||!draft.start||!draft.end)return null;
+      if(draft.kind==="floor"){
+        const y=(draft.start.y+draft.end.y)*.5;
+        return {a:{x:draft.start.x,y},b:{x:draft.end.x,y},span:Math.abs(draft.end.x-draft.start.x)};
+      }
+      const x=(draft.start.x+draft.end.x)*.5;
+      return {a:{x,y:draft.start.y},b:{x,y:draft.end.y},span:Math.abs(draft.end.y-draft.start.y)};
+    }
+    function updatePanelDraft(draft,support){
+      if(!draft)return false;
+      draft.end=support||null;
+      const geometry=draft.end?panelGeometry(draft):null;
+      draft.valid=!!(support&&support.member!==draft.start.member&&geometry&&geometry.span>=GRID_CELL_PX*.75);
+      return draft.valid;
+    }
+    function createPanel(draft){
+      const geometry=panelGeometry(draft);
+      if(!geometry||!draft.valid)return false;
+      const nodeAt=point=>{
+        const existing=closestNode(point.x,point.y,9);
+        if(existing)return existing;
+        const onFloor=point.y>=state.ground-12;
+        const node=makeNode(point.x,onFloor?state.ground:point.y,false,onFloor);
+        state.nodes.push(node);return node;
+      };
+      const a=nodeAt(geometry.a),b=nodeAt(geometry.b);
+      const member=addMember(a,b,state.material,draft.kind);
+      if(!member)return false;
+      state.selectedNode=null;state.selectedLoad=null;state.selectedMember=member;
+      notify((draft.kind==="floor"?"Floor":"Wall")+" panel placed. Intersections join the frame when the test starts.");
+      updateInspector();draw();return true;
+    }
+    function updateBuildModeUI(){
+      const floorMode=state.buildMode==="floor";
+      const frameTools=document.getElementById("frameModeTools"),floorTools=document.getElementById("floorModeTools");
+      if(frameTools)frameTools.hidden=floorMode;
+      if(floorTools)floorTools.hidden=!floorMode;
+      document.querySelectorAll("[data-build-mode]").forEach(button=>{
+        const active=button.dataset.buildMode===state.buildMode;
+        button.classList.toggle("selected",active);button.setAttribute("aria-pressed",String(active));
+      });
     }
 
     function updateInspector() {
@@ -1060,12 +1142,14 @@
     }
 
     function setTool(tool) {
-      state.tool = tool; state.firstNode = null; state.firstNavPoint = null;
+      state.buildMode=(tool==="floor"||tool==="wall")?"floor":"frame";
+      state.tool=tool;state.firstNode=null;state.firstNavPoint=null;state.panelDraft=null;
       document.querySelectorAll("[data-tool]").forEach(button => {
         const active = button.dataset.tool === tool;
         button.classList.toggle("selected", active);
         button.setAttribute("aria-pressed", String(active));
       });
+      updateBuildModeUI();
       const hints = {
         select: "Select nodes or members. Drag a node to reposition it. Right-click a node to pin it.",
         node: "Click and drag anywhere in the scene to place a node precisely. Release to set it down.",
@@ -1080,12 +1164,19 @@
         ladder: "Click the first floor landing, then the second landing to add a climbable ladder.",
         stairs: "Click two floor landings to create a traversable stair connection.",
         elevator: "Click two floor stops to create a lift shaft and connected stops.",
-        exit: "Click a floor edge to mark a safe exit for evacuation routing."
+        exit: "Click a floor edge to mark a safe exit for evacuation routing.",
+        floor: "Drag from one frame member to another. Floors snap level and connect to the frame.",
+        wall: "Drag between two frame members. Walls snap vertical and connect to the frame."
       };
       document.getElementById("toolHint").textContent = hints[tool];
       canvas.style.cursor = tool === "select" ? "default" : tool === "heat" ? "cell" : "crosshair";
     }
 
+    document.querySelectorAll("[data-build-mode]").forEach(button => {
+      button.addEventListener("click", () => {
+        if(!state.testMode)setTool(button.dataset.buildMode==="floor"?"floor":"select");
+      });
+    });
     document.querySelectorAll("[data-tool]").forEach(button => {
       button.addEventListener("click", () => setTool(button.dataset.tool));
     });
@@ -1177,7 +1268,7 @@
       if (node) { if (node.baseNode) { notify("Floor base nodes stay glued to the ground."); return; } node.pinned = !node.pinned; refreshNodeInverseMass(node); node.px = node.x; node.py = node.y; updateInspector(); draw(); }
     });
     canvas.addEventListener("pointerdown", event => {
-      if (state.testMode && ["node", "member", "rope", "load", "delete", "ladder", "stairs", "elevator", "exit"].includes(state.tool)) {
+      if (state.testMode && ["node", "member", "rope", "load", "delete", "ladder", "stairs", "elevator", "exit", "floor", "wall"].includes(state.tool)) {
         notify("The structure is locked during a test. Reset Structure to edit your build.");
         return;
       }
@@ -1189,6 +1280,11 @@
       const p = rawPoint;
       if (event.button === 2) return;
       canvas.setPointerCapture(event.pointerId);
+      if(state.tool==="floor"||state.tool==="wall"){
+        const support=findPanelSupport(p.x,p.y);
+        if(!support){notify("Start the drag on an intact frame member (not a rope).");return;}
+        state.panelDraft={kind:state.tool,start:support,end:null,valid:false};draw();return;
+      }
       if (state.tool === "node") {
         const place = snappedPoint(p);
         const isFloorPlacement = place.y >= state.ground - 12;
@@ -1300,6 +1396,8 @@
     });
     canvas.addEventListener("pointermove", event => {
       const p = pointerPosition(event);
+      state.pointer=p;
+      if(state.panelDraft){updatePanelDraft(state.panelDraft,findPanelSupport(p.x,p.y));draw();return;}
       if (state.dragging) {
         const moveTo = snappedPoint(p);
         state.dragging.x = moveTo.x; state.dragging.y = moveTo.y;
@@ -1308,7 +1406,14 @@
         draw();
       } else if (state.tool === "heat" && event.buttons === 1) applyHeat(p.x, p.y, 8);
     });
-    const endDrag = () => {
+    const endDrag = event => {
+      if(state.panelDraft){
+        const draft=state.panelDraft,point=event?pointerPosition(event):state.pointer;
+        updatePanelDraft(draft,point?findPanelSupport(point.x,point.y):null);
+        state.panelDraft=null;
+        if(!draft.valid||!createPanel(draft))notify("Use two different intact frame members with enough distance between them.");
+        updateInspector();draw();
+      }
       if (state.dragging && !state.dragging.baseNode && state.dragging.y >= state.ground - 12) {
         const node = state.dragging;
         node.y = state.ground; node.py = node.y; node.px = node.x;
@@ -1319,7 +1424,7 @@
       state.dragging = null;
     };
     canvas.addEventListener("pointerup", endDrag);
-    canvas.addEventListener("pointercancel", endDrag);
+    canvas.addEventListener("pointercancel",()=>{state.panelDraft=null;state.dragging=null;draw();});
 
     function applyHeat(x, y, amount) {
       for (const member of state.members) {
@@ -1884,7 +1989,7 @@
             ctx.stroke();
           }
         };
-        ctx.strokeStyle=color;ctx.lineWidth=member.kind==="rope"?2.8:6;ctx.lineCap="round";ctx.lineJoin="round";
+        ctx.strokeStyle=color;ctx.lineWidth=member.kind==="rope"?2.8:member.kind==="floor"?10:member.kind==="wall"?8:6;ctx.lineCap="round";ctx.lineJoin="round";
         traceMember();
         if ((member.temperature>80 || member.ignited) && !member.broken) {
           ctx.strokeStyle=member.ignited?"rgba(255,112,57,.42)":"rgba(255,139,78,.28)";
@@ -1905,6 +2010,19 @@
         ctx.beginPath();ctx.arc(node.x,node.y,node===state.selectedNode?7:5,0,Math.PI*2);ctx.fill();
         ctx.strokeStyle="#242342";ctx.lineWidth=2;ctx.stroke();
         if(node===state.firstNode){ctx.strokeStyle="#aaa6ff";ctx.lineWidth=2;ctx.beginPath();ctx.arc(node.x,node.y,13,0,Math.PI*2);ctx.stroke();}
+      }
+      if(state.panelDraft){
+        const draft=state.panelDraft,fallback=state.pointer||draft.start;
+        const endpoint=draft.end||{x:fallback.x,y:fallback.y};
+        const geometry=panelGeometry({kind:draft.kind,start:draft.start,end:endpoint});
+        if(geometry){
+          ctx.save();ctx.lineCap="square";ctx.strokeStyle=draft.valid?"rgba(83,214,157,.9)":"rgba(235,101,117,.9)";
+          ctx.lineWidth=draft.kind==="floor"?10:8;ctx.setLineDash([8,5]);
+          ctx.beginPath();ctx.moveTo(geometry.a.x,geometry.a.y);ctx.lineTo(geometry.b.x,geometry.b.y);ctx.stroke();
+          ctx.setLineDash([]);ctx.fillStyle="#69bfea";ctx.beginPath();ctx.arc(draft.start.x,draft.start.y,6,0,Math.PI*2);ctx.fill();
+          if(draft.end){ctx.beginPath();ctx.arc(draft.end.x,draft.end.y,6,0,Math.PI*2);ctx.fill();}
+          ctx.restore();
+        }
       }
       if(state.tool==="heat" && state.pointer) {
         ctx.strokeStyle="rgba(255,145,91,.5)";ctx.lineWidth=1;ctx.beginPath();ctx.arc(state.pointer.x,state.pointer.y,36,0,Math.PI*2);ctx.stroke();
@@ -1961,7 +2079,7 @@
       if(event.key==="Escape" && currentScreen==="settings"){showScreen(returnScreen);return;}
       if(currentScreen!=="workspace" || event.ctrlKey || event.metaKey || event.altKey) return;
       const shortcuts={"1":"select","2":"node","3":"member","4":"load","5":"heat","6":"delete","7":"break","8":"explode","9":"ignite",
-        "l":"ladder","s":"stairs","e":"elevator","x":"exit"};
+        "l":"ladder","s":"stairs","e":"elevator","x":"exit","f":"floor","w":"wall"};
       const shortcut=shortcuts[event.key.toLowerCase()];
       if(shortcut) setTool(shortcut);
       if(event.key.toLowerCase()==="t" && !/INPUT|SELECT|TEXTAREA/.test(event.target.tagName)) setTool("rope");
@@ -1976,6 +2094,7 @@
         resetStructure();
       }
     });
+    updateBuildModeUI();
     showScreen("menu");
     requestAnimationFrame(frame);
   }

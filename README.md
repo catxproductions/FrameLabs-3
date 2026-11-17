@@ -21,7 +21,7 @@ FL3 is **not** a 3D block sandbox. The game world is two-dimensional and structu
 
 ### Physical grid scale
 
-One grid cell represents **5 square feet of area**. Each cell is therefore approximately **2.236 ft × 2.236 ft** (0.6816 m per side). The native and browser-preview solvers convert gravity, member mass, and load mass using this scale. Loads labelled in kilograms are treated as kilograms rather than scaled-down display values.
+One grid cell represents **25 ft × 25 ft** (**625 square feet**). The native and browser-preview solvers convert gravity, member mass, and load mass using this physical world scale. Loads labelled in kilograms are treated as kilograms rather than scaled-down display values.
 
 The material and failure models remain game-tuned approximations, not certified structural-engineering calculations. The grid scale gives the simulation a consistent physical reference; it does not make the solver suitable for real building design.
 
@@ -47,6 +47,12 @@ The first material response model is deliberately game-tuned rather than present
 Heat raises member temperature, reduces effective bending stiffness, and lowers the strain/bend threshold for failure. The exact response is tuned per material rather than applying one generic heat multiplier to everything.
 
 These are stylized game units. They are not structural engineering measurements or safe design recommendations.
+
+## Building modes
+
+- **Frame Mode** preserves the existing frame construction tools.
+- **Floor Mode** adds Floor and Wall panel tools. Drag from one intact structural member to another; floors snap level and walls snap vertical.
+- Panels are physical structural members that use the existing material, deformation, contact, mass, and load systems. Browser intersections are joined to the frame when a test starts.
 
 ## Controls
 

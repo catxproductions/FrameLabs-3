@@ -166,12 +166,14 @@ void separateStructuralMembersCollide() {
 }
 
 void gridCellHasTheConfiguredPhysicalArea() {
-    require(std::fabs(GridCellAreaSquareFeet - 5.0f) < 1e-6f,
-            "one grid cell should represent exactly five square feet");
+    require(std::fabs(GridCellAreaSquareFeet - 625.0f) < 1e-6f,
+            "one grid cell should represent 625 square feet");
+    require(std::fabs(GridCellSideFeet - 25.0f) < 1e-6f,
+            "one grid cell should be 25 feet per side");
     require(std::fabs(GridCellSideFeet * GridCellSideFeet - GridCellAreaSquareFeet) < 1e-5f,
-            "grid cell side length does not match its area");
+            "grid side length does not match its area");
     require(std::fabs(MetersPerWorldUnit - GridCellSideFeet * 0.3048f) < 1e-6f,
-            "native world-unit conversion is inconsistent with the grid scale");
+            "native unit conversion is inconsistent with the grid scale");
 }
 
 void ropeSagsAndActsAsATensionOnlyMember() {
