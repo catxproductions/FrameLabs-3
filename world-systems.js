@@ -385,9 +385,10 @@
       updateDebris(safeDt, world);
       updateParticles(safeDt, world);
       const requested = [];
-      for (const member of world.members || []) {
-        if (member.explosionRequested) {
+      for (const member of (Array.isArray(world.members) ? world.members : [])) {
+        if (member && member.explosionRequested) {
           member.explosionRequested = false;
+          if (!Array.isArray(member.points) || !member.points.length) continue;
           const center = member.points.reduce((sum, point) => ({
             x: sum.x + point.x / member.points.length,
             y: sum.y + point.y / member.points.length
@@ -412,8 +413,9 @@
 
     function fireIntensityAt(x, y, members) {
       let intensity = 0;
-      for (const member of members || []) {
-        if (!member.ignited || member.broken || member.detached) continue;
+      for (const member of Array.isArray(members) ? members : []) {
+        if (!member || !Array.isArray(member.points) || !member.points.length ||
+            !member.ignited || member.broken || member.detached) continue;
         const center = member.points.reduce((sum, p) => ({
           x: sum.x + p.x / member.points.length, y: sum.y + p.y / member.points.length
         }), { x: 0, y: 0 });
@@ -740,15 +742,17 @@
         if (!link || !["ladder", "stairs", "elevator"].includes(link.kind) ||
             !link.a || !link.b || ![link.a.x, link.a.y, link.b.x, link.b.y].every(Number.isFinite) ||
             distance(link.a, link.b) < 28) continue;
-        const id = Number.isInteger(link.id) && link.id > 0 && !usedConnectorIds.has(link.id)
-          ? link.id : Math.max(1, ...usedConnectorIds) + 1;
+        let id = Number.isInteger(link.id) && link.id > 0 && !usedConnectorIds.has(link.id)
+          ? link.id : 1;
+        while (usedConnectorIds.has(id)) id++;
         usedConnectorIds.add(id);
         connectors.push({ id, kind: link.kind, a: { x: link.a.x, y: link.a.y }, b: { x: link.b.x, y: link.b.y } });
       }
       for (const exit of savedExits) {
         if (!exit || !Number.isFinite(exit.x) || !Number.isFinite(exit.y)) continue;
-        const id = Number.isInteger(exit.id) && exit.id > 0 && !usedExitIds.has(exit.id)
-          ? exit.id : Math.max(1, ...usedExitIds) + 1;
+        let id = Number.isInteger(exit.id) && exit.id > 0 && !usedExitIds.has(exit.id)
+          ? exit.id : 1;
+        while (usedExitIds.has(id)) id++;
         usedExitIds.add(id);
         exits.push({ id, x: exit.x, y: exit.y });
       }
