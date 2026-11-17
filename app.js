@@ -727,6 +727,8 @@
       state.selectedLoad = null;
       state.dragging = null;
       state.testSnapshot = null;
+      worldSystems.clearAll();
+      state.firstNavPoint = null;
       state.testMode = false;
       state.paused = true;
       state.accumulator = 0;
@@ -765,9 +767,13 @@
           temperature: member.temperature,
           plasticStrain: member.plasticStrain || 0,
           peakTensileStrain: member.peakTensileStrain || 0,
+          ignited: !!member.ignited, exploded: !!member.exploded,
+          fireTimer: member.fireTimer || 0, smokeTimer: member.smokeTimer || 0,
+          detached: !!member.detached, fractureProcessed: !!member.fractureProcessed,
           interior: member.points.slice(1, -1).map(point => ({ ...point }))
         })),
-        loads: state.loads.map(load => ({ ...load }))
+        loads: state.loads.map(load => ({ ...load })),
+        navigation: worldSystems.captureNavigation()
       };
     }
 
@@ -788,6 +794,8 @@
         };
       });
       state.loads = snapshot.loads.map(load => ({ ...load }));
+      worldSystems.clearDynamic();
+      worldSystems.restoreNavigation(snapshot.navigation);
       state.nextNode = snapshot.nextNode;
       state.nextMember = snapshot.nextMember;
       state.firstNode = null;
@@ -818,7 +826,7 @@
       if (materialSelect) materialSelect.disabled = state.testMode;
       document.querySelectorAll("[data-tool]").forEach(button => {
         button.disabled = state.testMode &&
-          ["node", "member", "rope", "load", "delete"].includes(button.dataset.tool);
+          ["node", "member", "rope", "load", "delete", "ladder", "stairs", "elevator", "exit"].includes(button.dataset.tool);
       });
     }
 
@@ -844,7 +852,7 @@
       }
 
       for (const member of state.members) {
-        if (member.broken || !member.a || !member.b) {
+        if (member.broken || member.detached || !member.a || !member.b) {
           for (const point of member.points || []) {
             point.px = point.x;
             point.py = point.y;
@@ -950,6 +958,14 @@
       if (memberCount) memberCount.textContent = state.members.length;
       if (brokenCount) brokenCount.textContent = state.members.filter(m => m.broken).length;
       if (loadCount) loadCount.textContent = state.loads.length;
+      const debrisCount = document.getElementById("debrisCount");
+      const particleCount = document.getElementById("particleCount");
+      const connectorCount = document.getElementById("connectorCount");
+      const exitCount = document.getElementById("exitCount");
+      if (debrisCount) debrisCount.textContent = worldSystems.getDebrisCount();
+      if (particleCount) particleCount.textContent = worldSystems.getParticleCount();
+      if (connectorCount) connectorCount.textContent = worldSystems.getConnectorCount();
+      if (exitCount) exitCount.textContent = worldSystems.getExitCount();
       const count = document.getElementById("structureCount");
       if (count) count.textContent = state.nodes.length + " nodes / " + state.members.length + " members";
       const summary = document.getElementById("selectionSummary");
@@ -968,7 +984,7 @@
     }
 
     function setTool(tool) {
-      state.tool = tool; state.firstNode = null;
+      state.tool = tool; state.firstNode = null; state.firstNavPoint = null;
       document.querySelectorAll("[data-tool]").forEach(button => {
         const active = button.dataset.tool === tool;
         button.classList.toggle("selected", active);
@@ -982,7 +998,13 @@
         load: "Click in the scene to drop a 220 kg test load.",
         heat: "Heat softens members and expands steel. Tension can permanently stretch or snap an overloaded member.",
         delete: "Click a node, member, or test load to remove it. Deleting a node also removes its connected members.",
-        break: "Click a member to fracture it. The two separated pieces remain in the simulation."
+        break: "Click a member to split it into independent fragments that fall, collide and settle.",
+        explode: "Click to apply a radial impulse, damage nearby members and emit dust and sparks.",
+        ignite: "Click wood or flammable composite to start fire, heat transfer and smoke.",
+        ladder: "Click the first floor landing, then the second landing to add a climbable ladder.",
+        stairs: "Click two floor landings to create a traversable stair connection.",
+        elevator: "Click two floor stops to create a lift shaft and connected stops.",
+        exit: "Click a floor edge to mark a safe exit for evacuation routing."
       };
       document.getElementById("toolHint").textContent = hints[tool];
       canvas.style.cursor = tool === "select" ? "default" : tool === "heat" ? "cell" : "crosshair";
@@ -1043,6 +1065,8 @@
       member.broken = true;
       member.breakSegment = closestSegment;
       member.stress = Math.max(member.stress, 1.15);
+      worldSystems.fractureMember(member, closestSegment, 1 / 120);
+      recalculateNodeMasses();
       state.selectedNode = null;
       state.selectedLoad = null;
       state.selectedMember = member;
@@ -1059,7 +1083,7 @@
       if (node) { if (node.baseNode) { notify("Floor base nodes stay glued to the ground."); return; } node.pinned = !node.pinned; refreshNodeInverseMass(node); node.px = node.x; node.py = node.y; updateInspector(); draw(); }
     });
     canvas.addEventListener("pointerdown", event => {
-      if (state.testMode && ["node", "member", "rope", "load", "delete"].includes(state.tool)) {
+      if (state.testMode && ["node", "member", "rope", "load", "delete", "ladder", "stairs", "elevator", "exit"].includes(state.tool)) {
         notify("The structure is locked during a test. Reset Structure to edit your build.");
         return;
       }
@@ -1169,7 +1193,16 @@
           const t = clamp(((x-a.x)*dx+(y-a.y)*dy)/Math.max(1,dx*dx+dy*dy),0,1);
           nearest = Math.min(nearest, Math.hypot(x-a.x-dx*t,y-a.y-dy*t));
         }
-        if (nearest < 36) member.temperature = Math.min(1000, member.temperature + amount * (1-nearest/36));
+        if (nearest < 36) {
+          member.temperature = Math.min(1100, member.temperature + amount * (1-nearest/36));
+          const profile = materialProfiles[member.material] || {};
+          if (profile.flammability > 0 && member.temperature >= (profile.ignitionTemperature || 240)) {
+            member.ignited = true;
+          }
+          if (profile.explosive && member.temperature >= (profile.ignitionTemperature || 270)) {
+            member.explosionRequested = true;
+          }
+        }
       }
       draw();
     }
@@ -1247,7 +1280,7 @@
     }
 
     function solveLoadMemberContact(load, member, dt, solveVelocity) {
-      if (member.broken) return;
+      if (member.broken || member.detached) return;
       const profile = materialProfiles[member.material];
       for (let i = 1; i < member.points.length; i++) {
         const a = member.points[i - 1], b = member.points[i];
@@ -1344,8 +1377,10 @@
     function solveMemberMemberContacts() {
       for(let i=0;i<state.members.length;i++) {
         const first=state.members[i];
+        if (first.broken || first.detached) continue;
         for(let j=i+1;j<state.members.length;j++) {
           const second=state.members[j];
+          if (second.broken || second.detached) continue;
           if(first.a===second.a||first.a===second.b||first.b===second.a||first.b===second.b)continue;
           for(let a=1;a<first.points.length;a++)
             for(let b=1;b<second.points.length;b++)
