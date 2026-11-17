@@ -141,6 +141,12 @@
         <button class="tool" data-tool="heat" aria-pressed="false"><span>♨</span><b>Heat brush</b><kbd>5</kbd></button>
         <button class="tool" data-tool="delete" aria-pressed="false"><span>⌫</span><b>Delete</b><kbd>6</kbd></button>
         <button class="tool" data-tool="break" aria-pressed="false"><span>⚡</span><b>Break</b><kbd>7</kbd></button>
+        <button class="tool" data-tool="explode" aria-pressed="false"><span>✹</span><b>Explode</b><kbd>8</kbd></button>
+        <button class="tool" data-tool="ignite" aria-pressed="false"><span>♨</span><b>Ignite</b><kbd>9</kbd></button>
+        <button class="tool" data-tool="ladder" aria-pressed="false"><span>↕</span><b>Ladder</b><kbd>L</kbd></button>
+        <button class="tool" data-tool="stairs" aria-pressed="false"><span>⌁</span><b>Stairs</b><kbd>S</kbd></button>
+        <button class="tool" data-tool="elevator" aria-pressed="false"><span>⇵</span><b>Elevator</b><kbd>E</kbd></button>
+        <button class="tool" data-tool="exit" aria-pressed="false"><span>⇥</span><b>Exit</b><kbd>X</kbd></button>
       </div>
       <p class="browser-hint" id="toolHint">Build your structure first. Pin supports with right-click, then press Start Test.</p>
       <p class="browser-hint">WORLD SCALE · 1 GRID CELL = 5 ft² (2.236 ft × 2.236 ft)</p>
@@ -148,7 +154,8 @@
         <label for="materialSelect">MEMBER MATERIAL</label>
         <select id="materialSelect">
           <option value="steel">Steel</option><option value="wood">Wood</option>
-          <option value="composite">Composite</option><option value="concrete">Concrete</option>
+          <option value="composite">Composite</option><option value="explosiveComposite">Explosive composite</option>
+          <option value="flammableComposite">Flammable composite</option><option value="concrete">Concrete</option>
         </select>
       </div>
       <div class="browser-sim-actions">
@@ -173,6 +180,8 @@
       <div class="property-list" id="selectionProperties">
         <div>NODES <b id="nodeCount">0</b></div><div>MEMBERS <b id="memberCount">0</b></div>
         <div>FAILED <b id="brokenCount">0</b></div><div>LOADS <b id="loadCount">0</b></div>
+        <div>DEBRIS <b id="debrisCount">0</b></div><div>PARTICLES <b id="particleCount">0</b></div>
+        <div>CONNECTORS <b id="connectorCount">0</b></div><div>EXITS <b id="exitCount">0</b></div>
       </div>`;
 
     const style = document.createElement("style");
@@ -192,7 +201,8 @@
       .browser-sim-actions button:disabled:hover,.browser-tool-grid .tool:disabled:hover{border-color:rgba(141,139,205,.17);color:#77758f}
       .browser-sim-actions .clear-scene-action{grid-column:1/-1;border-color:rgba(190,104,111,.38);color:#d59a9f}
       .browser-sim-actions .clear-scene-action:hover{border-color:#c87982;color:#ffe0e2}
-      .browser-tool-grid .tool{min-width:0}
+      .browser-tool-grid .tool{min-width:0;min-height:36px}
+      .browser-tool-grid .tool b{font-size:9px}
       #selectionSummary{min-height:52px}
       .workspace-screen .grid-bg{background-size:24px 24px;background-position:0 0}
       @media(max-width:820px){.browser-sim-actions{grid-template-columns:repeat(2,minmax(0,1fr))}}
@@ -200,6 +210,20 @@
     document.head.appendChild(style);
 
     const ctx = canvas.getContext("2d");
+    if (!window.FrameLabs3WorldSystems) {
+      notify("World systems did not load. Refresh the FL3 preview.");
+      return;
+    }
+    const worldSystems = window.FrameLabs3WorldSystems.createWorldSystems();
+    window.FrameLabs3Navigation = Object.freeze({
+      findRouteToExit: (x, y) => worldSystems.findRouteToExit(x, y, state.ground),
+      getOccupantPerception: (x, y, extras = {}) =>
+        worldSystems.occupantPerception(x, y, extras, {
+          ground: state.ground, members: state.members
+        }),
+      addConnector: (kind, a, b) => worldSystems.addConnector(kind, a, b),
+      addExit: point => worldSystems.addExit(point)
+    });
     // One 24 px grid cell represents 5 square feet of plan area.
     // Physics is simulated in canvas pixels, with physical constants converted from SI.
     const GRID_CELL_PX = 24;
@@ -228,28 +252,47 @@
         stiffness: 0.985, bendStiffness: 0.985, heatSoftening: 0.72,
         heatWeakening: 0.92, thermalExpansion: 0.000018, tensileYield: 0.012, plasticRate: 0.6,
         staticFriction: 0.76, dynamicFriction: 0.49,
-        restitution: 0.12, elasticity: 0.58, fatigueSeconds: 2.5
+        restitution: 0.12, elasticity: 0.58, fatigueSeconds: 2.5,
+        flammability: 0.82, ignitionTemperature: 225, burnRate: 105
       },
       composite: {
         color: "#79c6c4", density: 1.25, bend: 0.23, strain: 0.03,
         stiffness: 0.998, bendStiffness: 0.994, heatSoftening: 0.42,
         heatWeakening: 0.86, thermalExpansion: 0.00001, tensileYield: 0.006, plasticRate: 0.6,
         staticFriction: 0.62, dynamicFriction: 0.38,
-        restitution: 0.10, elasticity: 0.32, fatigueSeconds: 3.2
+        restitution: 0.10, elasticity: 0.32, fatigueSeconds: 3.2,
+        flammability: 0, ignitionTemperature: 10000
       },
       concrete: {
         color: "#9c9eae", density: 2.35, bend: 0.20, strain: 0.025,
         stiffness: 0.999, bendStiffness: 0.997, heatSoftening: 0.35,
         heatWeakening: 0.90, thermalExpansion: 0.00001, tensileYield: 0.004, plasticRate: 0.4,
         staticFriction: 0.88, dynamicFriction: 0.64,
-        restitution: 0.08, elasticity: 0.25, fatigueSeconds: 2.0
+        restitution: 0.08, elasticity: 0.25, fatigueSeconds: 2.0,
+        flammability: 0, ignitionTemperature: 10000
+      },
+      explosiveComposite: {
+        color: "#d88d65", density: 1.35, bend: 0.20, strain: 0.028,
+        stiffness: 0.998, bendStiffness: 0.995, heatSoftening: 0.48,
+        heatWeakening: 0.92, thermalExpansion: 0.00001, tensileYield: 0.006, plasticRate: 0.45,
+        staticFriction: 0.60, dynamicFriction: 0.36,
+        restitution: 0.12, elasticity: 0.35, fatigueSeconds: 2.5,
+        flammability: 0.65, ignitionTemperature: 270, burnRate: 180, explosive: true
+      },
+      flammableComposite: {
+        color: "#cc9857", density: 1.20, bend: 0.22, strain: 0.03,
+        stiffness: 0.997, bendStiffness: 0.993, heatSoftening: 0.58,
+        heatWeakening: 0.95, thermalExpansion: 0.000012, tensileYield: 0.006, plasticRate: 0.5,
+        staticFriction: 0.63, dynamicFriction: 0.39,
+        restitution: 0.10, elasticity: 0.30, fatigueSeconds: 2.6,
+        flammability: 1, ignitionTemperature: 150, burnRate: 145
       }
     };
     const state = {
       nodes: [], members: [], loads: [], nextNode: 1, nextMember: 1,
       tool: "select", material: "steel", firstNode: null, selectedNode: null,
       selectedMember: null, selectedLoad: null, dragging: null, paused: true,
-      testMode: false, testSnapshot: null,
+      firstNavPoint: null, testMode: false, testSnapshot: null,
       stress: true, gridSnap: false, gridSize: GRID_CELL_PX,
       lastTime: 0, accumulator: 0, width: 0, height: 0, ground: 0
     };
@@ -281,6 +324,7 @@
         node.mass = node.baseMass || 0.5;
       }
       for (const member of state.members) {
+        if (member.broken || member.detached) continue;
         const endpointMass = Math.max(0, member.memberMass || 0) / 10;
         member.a.mass += endpointMass;
         member.b.mass += endpointMass;
@@ -331,7 +375,9 @@
       state.members.push({
         id: state.nextMember++, a, b, points, material, kind,
         rest, segmentRest: rest / 5, segmentRests,
-        broken: false, stress: 0, damage: 0, fatigue: 0, temperature: 20,
+        broken: false, detached: false, fractureProcessed: false,
+        ignited: false, exploded: false, fireTimer: 0, smokeTimer: 0,
+        stress: 0, damage: 0, fatigue: 0, temperature: 20,
         plasticStrain: 0, peakTensileStrain: 0, memberMass
       });
       return state.members[state.members.length - 1];
@@ -590,6 +636,7 @@
       const oldW = state.width || rect.width, oldH = state.height || rect.height;
       const sx = rect.width / oldW, sy = rect.height / oldH;
       if (state.width) {
+        worldSystems.scaleWorld(sx, sy);
         [...state.nodes, ...state.members.flatMap(m => m.points.slice(1, -1)), ...state.loads].forEach(p => {
           p.x *= sx; p.px *= sx; p.y *= sy; p.py *= sy;
         });
