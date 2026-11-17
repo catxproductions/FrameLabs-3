@@ -863,18 +863,33 @@
           }
           ctx.lineTo(b.x, b.y); ctx.stroke();
         } else {
+          // Draw the shaft in its local orientation so a collapsed elevator
+          // visibly rotates with the same rigid-body transform as its physics.
+          const dx = b.x - a.x, dy = b.y - a.y;
+          const length = Math.max(1, Math.hypot(dx, dy));
+          const nx = -dy / length * 13, ny = dx / length * 13;
+          const angle = Math.atan2(dy, dx);
+          const centerX = (a.x + b.x) * 0.5;
+          const centerY = (a.y + b.y) * 0.5;
           ctx.strokeStyle = "#82c3c5"; ctx.lineWidth = 2;
-          const shaftX = (a.x + b.x) * 0.5;
           ctx.setLineDash([5, 4]);
-          ctx.beginPath(); ctx.moveTo(shaftX - 13, a.y); ctx.lineTo(shaftX - 13, b.y);
-          ctx.moveTo(shaftX + 13, a.y); ctx.lineTo(shaftX + 13, b.y); ctx.stroke();
+          ctx.beginPath();
+          ctx.moveTo(a.x + nx, a.y + ny); ctx.lineTo(b.x + nx, b.y + ny);
+          ctx.moveTo(a.x - nx, a.y - ny); ctx.lineTo(b.x - nx, b.y - ny);
+          ctx.stroke();
           ctx.setLineDash([]);
-          const cabinY = (a.y + b.y) * 0.5;
           ctx.fillStyle = "rgba(84,166,174,.24)";
-          ctx.fillRect(shaftX - 10, cabinY - 10, 20, 20);
-          ctx.strokeRect(shaftX - 10, cabinY - 10, 20, 20);
-          ctx.beginPath(); ctx.moveTo(a.x - 22, a.y); ctx.lineTo(a.x + 22, a.y);
-          ctx.moveTo(b.x - 22, b.y); ctx.lineTo(b.x + 22, b.y); ctx.stroke();
+          ctx.strokeStyle = "#82c3c5";
+          ctx.save();
+          ctx.translate(centerX, centerY);
+          ctx.rotate(angle);
+          ctx.fillRect(-10, -10, 20, 20);
+          ctx.strokeRect(-10, -10, 20, 20);
+          ctx.restore();
+          ctx.beginPath();
+          ctx.moveTo(a.x - nx, a.y - ny); ctx.lineTo(a.x + nx, a.y + ny);
+          ctx.moveTo(b.x - nx, b.y - ny); ctx.lineTo(b.x + nx, b.y + ny);
+          ctx.stroke();
         }
         ctx.fillStyle = "#d6d1a8";
         ctx.beginPath(); ctx.arc(a.x, a.y, 3, 0, Math.PI * 2); ctx.arc(b.x, b.y, 3, 0, Math.PI * 2); ctx.fill();
