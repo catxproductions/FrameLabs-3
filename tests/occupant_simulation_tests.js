@@ -130,6 +130,12 @@ test("occupants cancel a stair traversal when that connector collapses", () => {
   worldSystems.addExit({ x: 280, y: 180 });
   const population = createPopulationSimulation({ agentApi: AgentFive, worldSystems });
   const [occupant] = population.spawn(1, { width: 300, ground: 180 });
+  // Place the occupant on an upper floor so gravity is observable immediately
+  // after the connector disappears instead of landing on the ground this step.
+  occupant.x = 100;
+  occupant.y = 80;
+  occupant.floorY = 80;
+  occupant.grounded = true;
   occupant.traversal = {
     from: { x: 100, y: 80 },
     to: { x: 100, y: 180 },
