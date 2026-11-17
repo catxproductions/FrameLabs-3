@@ -29,7 +29,7 @@ test('returns four independent controls and gates jump at 0.5',()=>{
 });
 test('100 percent panic disables the occupant',()=>{
   const b=new AI.OccupantBrain();b.setPanic(1);const d=b.decide(perception());
-  assert.equal(d.disabled,true);assert.equal(d.controls,null);assert.equal(d.reason,'panic-limit');
+  assert.equal(d.disabled,true);assert.equal(d.controls,null);assert.equal(d.reason,'panic-limit');assert.equal(d.panic,1);
 });
 test('landing, stampede, impact and crush thresholds disable occupant',()=>{
   for(const [field,reason] of [['landingImpact','hard-landing'],['stampedeImpact','stampeded'],
