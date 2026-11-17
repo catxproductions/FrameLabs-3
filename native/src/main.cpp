@@ -173,8 +173,8 @@ void drawSidebar(StructuralWorld&w,App&a){
  if(compact){
   DrawText(TextFormat("%i nodes / %i members",(int)w.nodeCount(),(int)w.memberCount()),x+20,height-52,9,Text);
   DrawText(TextFormat("%i failed members",(int)w.brokenMemberCount()),x+20,height-36,8,Color{232,143,116,255});
-  DrawText(TextFormat("%i connectors  /  %i falling",(int)w.connectorCount(),(int)w.fallingConnectorCount()),x+20,height-22,7,Muted);
-  DrawText("GRID SCALE / 5 FT² PER CELL",x+20,height-17,7,Muted);
+  DrawText(TextFormat("%i connectors / %i falling  ·  GRID 5 FT²/CELL",
+   (int)w.connectorCount(),(int)w.fallingConnectorCount()),x+20,height-17,7,Muted);
  }else{
   DrawText(TextFormat("%i nodes  /  %i members",(int)w.nodeCount(),(int)w.memberCount()),x+20,746,11,Text);
   DrawText(TextFormat("%i failed members",(int)w.brokenMemberCount()),x+20,768,10,Color{232,143,116,255});
@@ -187,7 +187,7 @@ void input(StructuralWorld&w,App&a){
  // Keyboard commands are global to the active workspace, not the pointer region.
  if(IsKeyPressed(KEY_SPACE))a.paused=!a.paused;
  if(IsKeyPressed(KEY_R)){w.resetDemo();a.firstNode=0;a.selectedNode=0;a.selectedMember=0;a.hasFirstConnectorPoint=false;}
- auto chooseTool=[&](Tool tool){if(a.tool!=tool){a.tool=tool;a.firstNode=0;}};
+ auto chooseTool=[&](Tool tool){if(a.tool!=tool){a.tool=tool;a.firstNode=0;a.hasFirstConnectorPoint=false;}};
  if(IsKeyPressed(KEY_ONE))chooseTool(Tool::Select);
  if(IsKeyPressed(KEY_TWO))chooseTool(Tool::Node);
  if(IsKeyPressed(KEY_THREE))chooseTool(Tool::Member);
