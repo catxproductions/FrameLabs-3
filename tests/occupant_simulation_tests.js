@@ -54,3 +54,17 @@ test("population safely holds when no exit is reachable", () => {
   assert.equal(population.getEvacuatedCount(), 0);
   assert.ok(population.getOccupants().every(agent => Number.isFinite(agent.x + agent.y)));
 });
+
+test("upper-floor occupants traverse stairs and continue to a ground-floor exit", () => {
+  const worldSystems = makeWorld();
+  const population = createPopulationSimulation({ agentApi: AgentFive, worldSystems });
+  const spawned = population.spawn(2, { width: 300, ground: 180 });
+  const upperFloorOccupant = spawned.find(agent => agent.floorY === 80);
+  assert.ok(upperFloorOccupant);
+  const world = { width: 300, ground: 180, members: [], loads: [], materialProfiles: {} };
+  for (let i = 0; i < 3600 && !upperFloorOccupant.evacuated; i++) {
+    population.step(1 / 120, world);
+  }
+  assert.equal(upperFloorOccupant.evacuated, true);
+  assert.equal(upperFloorOccupant.floorY, 180);
+});
