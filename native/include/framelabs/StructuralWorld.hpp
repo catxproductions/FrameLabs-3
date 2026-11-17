@@ -44,6 +44,15 @@ enum class MemberRole : std::uint8_t {
     Rope
 };
 
+enum class ConnectorKind : std::uint8_t {
+    Ladder,
+    Stairs,
+    Elevator
+};
+
+using ConnectorId = std::uint32_t;
+
+
 struct MaterialProfile {
     const char* id = "";
     const char* label = "";
@@ -115,6 +124,15 @@ struct LoadView {
     float massKg = 100.0f;
 };
 
+struct ConnectorView {
+    ConnectorId id = 0;
+    ConnectorKind kind = ConnectorKind::Stairs;
+    Vec2 a{};
+    Vec2 b{};
+    float width = 0.14f;
+    bool falling = false;
+};
+
 /// Native 2D structural world.
 ///
 /// FrameLabs uses a custom position-based particle/constraint solver for member
@@ -147,6 +165,10 @@ public:
     std::uint32_t addLoad(Vec2 position, float massKg = 110.0f);
     std::uint32_t findLoadNear(Vec2 position, float radius) const;
     bool removeLoad(std::uint32_t id);
+    ConnectorId addConnector(ConnectorKind kind, Vec2 landingA, Vec2 landingB);
+    const std::vector<ConnectorView>& connectors() const noexcept;
+    std::size_t connectorCount() const noexcept;
+    std::size_t fallingConnectorCount() const noexcept;
     void applyHeat(Vec2 position, float radius, float degreesPerSecond, float deltaSeconds);
     void ignite(Vec2 position, float radius);
     void explode(Vec2 position, float radius, float strength);
