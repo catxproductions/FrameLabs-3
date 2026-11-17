@@ -125,6 +125,7 @@
       occupant.traversal = {
         from: { x: from.x, y: from.y },
         to: { x: to.x, y: to.y },
+        connectorId: Number.isInteger(to.id) ? to.id : null,
         kind,
         waitRemaining: kind === "elevator" ? 0.55 : 0
       };
@@ -250,6 +251,20 @@
 
         if (occupant.traversal) {
           const traversal = occupant.traversal;
+          if (traversal.connectorId !== null) {
+            const liveConnector = worldSystems.getConnectors().find(
+              item => item.id === traversal.connectorId
+            );
+            if (!liveConnector || liveConnector.falling) {
+              occupant.traversal = null;
+              occupant.route = null;
+              occupant.routeTimer = 0;
+              occupant.grounded = false;
+              occupant.vy = Math.max(0, occupant.vy);
+              updateVerticalPhysics(occupant, safeDt, world);
+              continue;
+            }
+          }
           if (traversal.waitRemaining > 0) {
             traversal.waitRemaining = Math.max(0, traversal.waitRemaining - safeDt);
             occupant.vx = 0;
