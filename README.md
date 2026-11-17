@@ -85,3 +85,72 @@ Planned engine milestones include:
 6. Performance profiling and safe parallelization of independent simulation work.
 
 The FL2 codebase is used as a design reference for material distinctions, heat weakening, structural failure, and game feel. FL3's engine is being built as a separate native 2D implementation rather than porting FL2's browser runtime wholesale.
+
+
+## Agent Five occupant intelligence (FL3 adaptation)
+
+FL3 includes an FL3-owned adaptation of the Agent Five neural architecture in `agent-five-fl3.js`. It preserves Agent Five v8's 16-input, 26-hidden-layer fully connected tanh topology, separate value critic, PPO-style policy optimization with generalized advantage estimation, and prioritized/episodic experience memory. The FL3 actor head has four outputs instead of Agent Five's original three.
+
+### Perception inputs (in fixed order)
+
+1. Distance from floor
+2. Current floor
+3. Distance from wall
+4. Temperature
+5. Falling speed
+6. Distance from falling object
+7. Panic
+8. Horizontal speed
+9. Distance from exit
+10. Exit direction
+11. Floor difference to exit
+12. Smoke density
+13. Fire intensity
+14. Structural danger
+15. Nearby occupant density
+16. Debris clearance
+
+Object observations are normalized to [-1, 1]. Sensor scales can be overridden per observation using its `scale` object. Distance sensors encode close as -1 and far as +1; hazard intensity encodes none as -1 and maximum as +1.
+
+### Actor outputs
+
+- `thrustLeft`: independent left thrust, 0–1.
+- `thrustRight`: independent right thrust, 0–1.
+- `brake`: braking / friction control, 0–1.
+- `jump`: jump request, 0–1. FL3 should trigger a jump only when the value is at least 0.5, the occupant is grounded, and its jump cooldown is ready.
+
+The network returns decisions; the FL3 physics/navigation layer must apply those controls and build each occupant's sensor observation. The neural module does not invent floor geometry, exits, collision forces, smoke transport, or agent body physics.
+
+### Example adapter use
+
+```js
+const population = FrameLabs3AgentFive.createPopulation(24);
+const occupant = population[0];
+
+const decision = occupant.decide(perception, deltaSeconds);
+if (!decision.disabled) {
+  applyOccupantControls(decision.controls);
+  const jump = FrameLabs3AgentFive.shouldJump(
+    decision.controls, body.grounded, body.jumpCooldown <= 0
+  );
+  if (jump) requestOccupantJump(body);
+}
+
+// Report normalized force ratios from the physics solver.
+// A ratio >= 1 means that solver's configured disable threshold was reached.
+occupant.reportPhysicalStress({
+  landingImpact: landingSeverityRatio,
+  stampedeImpact: crowdImpactSeverityRatio,
+  impactForce: impactSeverityRatio,
+  crushForce: crushSeverityRatio
+});
+
+// Give feedback after each action. Mark the final experience terminal.
+occupant.recordOutcome(reward, "hazard-avoidance", { terminal: episodeEnded });
+```
+
+A panic value of 1.0 (100%) disables the occupant. The physics layer can also disable an occupant when landing impact, stampede impact, impact force, or crush-force severity reaches 1.0. These values are normalized ratios supplied by FL3; the host physics system owns the actual game thresholds.
+
+**Training compatibility:** FL3 uses a fresh FL3-specific model because the meanings of its 16 inputs and four actions differ from Agent Five's original environment. The original project's protected trained model parameters are not copied. Each FL3 brain learns through its own PPO rollouts and experience; population descendants can inherit and mutate a parent brain using `createPopulation(size, { parent })`.
+
+**Current integration boundary:** the script is loaded by the browser preview and exposes `window.FrameLabs3AgentFive`. The native C++ executable does not yet call this JavaScript module, and the browser simulation does not yet create floor-based occupants or connect their actions to the structural solver. Those are subsequent integration tasks.
