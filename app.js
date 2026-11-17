@@ -1038,6 +1038,8 @@
       if (evacuatedCount) evacuatedCount.textContent = evacuatedOccupants;
       if (populationStatus) populationStatus.textContent =
         totalOccupants + " occupants · " + evacuatedOccupants + " evacuated" +
+        (occupantSimulation && occupantSimulation.getInjuredCount()
+          ? " · " + occupantSimulation.getInjuredCount() + " injured" : "") +
         (occupantSimulation && occupantSimulation.getDisabledCount()
           ? " · " + occupantSimulation.getDisabledCount() + " inactive" : "");
       const count = document.getElementById("structureCount");
