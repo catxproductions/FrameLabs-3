@@ -671,6 +671,28 @@
       ctx.restore();
     }
 
+    function scaleWorld(sx, sy) {
+      const scaleX = Math.max(0.1, finite(sx, 1));
+      const scaleY = Math.max(0.1, finite(sy, 1));
+      for (const link of connectors) {
+        link.a.x *= scaleX; link.a.y *= scaleY;
+        link.b.x *= scaleX; link.b.y *= scaleY;
+      }
+      for (const exit of exits) { exit.x *= scaleX; exit.y *= scaleY; }
+      for (const body of debris) {
+        body.x *= scaleX; body.px *= scaleX;
+        body.y *= scaleY; body.py *= scaleY;
+        body.length *= (scaleX + scaleY) * 0.5;
+        body.width *= (scaleX + scaleY) * 0.5;
+        body.radius *= (scaleX + scaleY) * 0.5;
+      }
+      for (const particle of particles) {
+        particle.x *= scaleX; particle.vx *= scaleX;
+        particle.y *= scaleY; particle.vy *= scaleY;
+        particle.radius *= (scaleX + scaleY) * 0.5;
+      }
+    }
+
     function captureNavigation() {
       return {
         connectors: connectors.map(link => ({ id: link.id, kind: link.kind, a: { ...link.a }, b: { ...link.b } })),
@@ -704,7 +726,7 @@
       step, updateParticles, smokeDensityAt, fireIntensityAt, debrisClearanceAt,
       addConnector, addExit, removeNavigationAt, floorLevels, floorIndexAt,
       findRouteToExit, occupantPerception, drawNavigation, drawDebrisAndParticles,
-      captureNavigation, restoreNavigation, clearDynamic, clearAll,
+      captureNavigation, restoreNavigation, scaleWorld, clearDynamic, clearAll,
       getDebrisCount: () => debris.length,
       getParticleCount: () => particles.length,
       getConnectorCount: kind => kind ? connectors.filter(link => link.kind === kind).length : connectors.length,
