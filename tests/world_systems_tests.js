@@ -148,3 +148,75 @@ test("navigation restore rejects malformed links and keeps generated ids unique"
   assert.ok(added);
   assert.ok(!connectorIds.includes(added.id));
 });
+
+
+test("stairs and elevator shafts follow supported structure and fall when an attachment fails", () => {
+  for (const kind of ["stairs", "elevator"]) {
+    const systems = createWorldSystems();
+    const members = [
+      {
+        id: 11, kind: "beam", broken: false, detached: false,
+        points: [{ x: 120, y: 80 }, { x: 220, y: 80 }]
+      },
+      {
+        id: 12, kind: "beam", broken: false, detached: false,
+        points: [{ x: 120, y: 180 }, { x: 220, y: 180 }]
+      }
+    ];
+    const link = systems.addConnector(
+      kind,
+      { x: 140, y: 80 },
+      { x: 140, y: 180 },
+      {
+        a: { type: "member", id: 11, segmentIndex: 0, t: 0.2 },
+        b: { type: "member", id: 12, segmentIndex: 0, t: 0.2 }
+      }
+    );
+    assert.ok(link);
+    systems.updateConnectors(1 / 120, { width: 400, ground: 300, nodes: [], members });
+    assert.equal(link.falling, false);
+    assert.ok(Math.abs(link.a.y - 80) < 0.01);
+
+    // The whole connector follows both landings while the supporting structure
+    // moves, rather than remaining pinned to its original build coordinates.
+    for (const point of members[0].points) point.y += 10;
+    for (const point of members[1].points) point.y += 10;
+    systems.updateConnectors(1 / 120, { width: 400, ground: 300, nodes: [], members });
+    assert.ok(Math.abs(link.a.y - 90) < 0.01);
+    assert.ok(Math.abs(link.b.y - 190) < 0.01);
+
+    // After the upper landing fails, the connector drops onto the still-intact
+    // lower landing instead of passing through it.
+    members[0].broken = true;
+    members[0].detached = true;
+    for (let i = 0; i < 30; i++) {
+      systems.updateConnectors(1 / 120, { width: 400, ground: 300, nodes: [], members });
+    }
+    assert.equal(link.falling, true);
+    assert.ok(Math.abs(link.b.y - 190) < 1);
+
+    // Once the remaining landing fails, the whole assembly continues to ground.
+    members[1].broken = true;
+    members[1].detached = true;
+    for (let i = 0; i < 90; i++) {
+      systems.updateConnectors(1 / 120, { width: 400, ground: 300, nodes: [], members });
+    }
+    assert.ok(link.a.y > 90);
+    assert.ok(link.b.y > 190);
+    assert.ok(Number.isFinite(link.vy));
+  }
+});
+
+test("unattached navigation connectors fall in the simulation instead of remaining suspended", () => {
+  const systems = createWorldSystems();
+  const link = systems.addConnector(
+    "stairs",
+    { x: 100, y: 60 },
+    { x: 160, y: 110 },
+    { a: null, b: null }
+  );
+  systems.updateConnectors(1 / 60, { width: 400, ground: 300, nodes: [], members: [] });
+  assert.equal(link.falling, true);
+  assert.ok(link.a.y > 60);
+  assert.ok(link.b.y > 110);
+});

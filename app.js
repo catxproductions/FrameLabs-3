@@ -237,7 +237,7 @@
         worldSystems.occupantPerception(x, y, extras, {
           ground: state.ground, members: state.members
         }),
-      addConnector: (kind, a, b) => worldSystems.addConnector(kind, a, b),
+      addConnector: (kind, a, b, anchors) => worldSystems.addConnector(kind, a, b, anchors),
       addExit: point => worldSystems.addExit(point)
     });
     // One 24 px grid cell represents 5 square feet of plan area.
@@ -724,6 +724,33 @@
       return found;
     }
 
+    function findNavigationAnchor(point) {
+      let nearestNode = null, nodeDistance = 22;
+      for (const node of state.nodes) {
+        const d = distance(point, node);
+        if (d < nodeDistance) { nearestNode = node; nodeDistance = d; }
+      }
+      if (nearestNode) return { type: "node", id: nearestNode.id };
+
+      let nearest = null, bestDistance = 16;
+      for (const member of state.members) {
+        if (!member || member.broken || member.detached || member.kind === "rope") continue;
+        for (let i = 1; i < member.points.length; i++) {
+          const a = member.points[i - 1], b = member.points[i];
+          const dx = b.x - a.x, dy = b.y - a.y;
+          const t = clamp(((point.x - a.x) * dx + (point.y - a.y) * dy) /
+            Math.max(1, dx * dx + dy * dy), 0, 1);
+          const x = a.x + dx * t, y = a.y + dy * t;
+          const d = Math.hypot(point.x - x, point.y - y);
+          if (d < bestDistance) {
+            bestDistance = d;
+            nearest = { type: "member", id: member.id, segmentIndex: i - 1, t };
+          }
+        }
+      }
+      return nearest;
+    }
+
     function removeMember(member) {
       if (!member) return false;
       state.members = state.members.filter(item => item !== member);
@@ -1199,7 +1226,13 @@
           state.firstNavPoint = { x: place.x, y: place.y };
           notify("First landing marked. Click the connected floor landing.");
         } else {
-          const link = worldSystems.addConnector(state.tool, state.firstNavPoint, place);
+          const anchors = {
+            a: findNavigationAnchor(state.firstNavPoint),
+            b: findNavigationAnchor(place)
+          };
+          const link = worldSystems.addConnector(
+            state.tool, state.firstNavPoint, place, anchors
+          );
           state.firstNavPoint = null;
           notify(link
             ? state.tool.charAt(0).toUpperCase() + state.tool.slice(1) + " connection added."
@@ -1798,6 +1831,10 @@
         }
       }
       recalculateNodeMasses();
+      worldSystems.updateConnectors(dt, {
+        width: state.width, ground: state.ground,
+        nodes: state.nodes, members: state.members
+      });
     }
 
     function draw() {

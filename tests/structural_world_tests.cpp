@@ -253,6 +253,58 @@ void fixedSubstepsAreIndependentOfRenderStepGrouping() {
             "fixed-step simulation time is not deterministic");
 }
 
+void nativeStairsAndElevatorShaftsFollowSupportsAndFallAfterFailure() {
+    for (const ConnectorKind kind : {ConnectorKind::Stairs, ConnectorKind::Elevator}) {
+        StructuralWorld world;
+        world.clear();
+        const NodeId topA = world.addNode({5.0f, 8.0f}, true);
+        const NodeId topB = world.addNode({10.0f, 8.0f}, true);
+        const NodeId lowerA = world.addNode({5.0f, 4.0f}, true);
+        const NodeId lowerB = world.addNode({10.0f, 4.0f}, true);
+        const NodeId catchA = world.addNode({5.0f, 1.2f}, true);
+        const NodeId catchB = world.addNode({10.0f, 1.2f}, true);
+        const MemberId topFloor = world.addMember(topA, topB, MaterialKind::Concrete, MemberRole::Slab);
+        const MemberId lowerFloor = world.addMember(lowerA, lowerB, MaterialKind::Concrete, MemberRole::Slab);
+        world.addMember(catchA, catchB, MaterialKind::Concrete, MemberRole::Slab);
+        const ConnectorId connector = world.addConnector(kind, {7.5f, 8.0f}, {7.5f, 4.0f});
+        require(connector != 0, "failed to add native connector");
+        require(world.connectorCount() == 1, "native connector count did not update");
+        require(world.fallingConnectorCount() == 0, "supported connector fell before a failure");
+
+        require(world.removeMember(topFloor), "failed to remove the upper landing support");
+        for (int i = 0; i < 240; ++i) world.step(1.0f / 120.0f);
+        require(world.fallingConnectorCount() == 1,
+                "connector did not release when its upper landing support failed");
+        const ConnectorView* view = nullptr;
+        for (const auto& item : world.connectors()) if (item.id == connector) view = &item;
+        require(view != nullptr, "native connector view disappeared");
+        const float centerY = (view->a.y + view->b.y) * 0.5f;
+        require(centerY < 8.0f, "released connector did not move under gravity");
+
+        require(world.removeMember(lowerFloor), "failed to remove the lower landing support");
+        for (int i = 0; i < 360; ++i) world.step(1.0f / 120.0f);
+        view = nullptr;
+        for (const auto& item : world.connectors()) if (item.id == connector) view = &item;
+        require(view != nullptr && view->falling, "collapsed connector was lost from the world");
+        require(std::min(view->a.y, view->b.y) < 4.0f,
+                "connector did not continue falling after its lower landing failed");
+        require(std::isfinite(view->a.x + view->a.y + view->b.x + view->b.y),
+                "falling connector became non-finite");
+    }
+}
+
+void unanchoredNativeConnectorsFall() {
+    StructuralWorld world;
+    world.clear();
+    const ConnectorId connector = world.addConnector(
+        ConnectorKind::Stairs, {8.0f, 7.0f}, {8.0f, 4.0f}
+    );
+    require(connector != 0, "failed to add unanchored connector");
+    world.step(1.0f / 120.0f);
+    require(world.fallingConnectorCount() == 1,
+            "unanchored connector remained suspended");
+}
+
 void longSimulationMaintainsFiniteState() {
     StructuralWorld world;
     for (int i = 0; i < 1200; ++i) world.step(1.0f / 120.0f);
@@ -303,6 +355,8 @@ int main() {
     run("steel fracture under severe tension", severeTensileImpulseFracturesSteel);
     run("rope sag and tension-only mechanics", ropeSagsAndActsAsATensionOnlyMember);
     run("fixed-step determinism across render-step grouping", fixedSubstepsAreIndependentOfRenderStepGrouping);
+    run("native stairs and elevator shafts follow supports and collapse", nativeStairsAndElevatorShaftsFollowSupportsAndFallAfterFailure);
+    run("unanchored native connectors fall under gravity", unanchoredNativeConnectorsFall);
     run("finite state during extended simulation", longSimulationMaintainsFiniteState);
 
     if (failures != 0) {

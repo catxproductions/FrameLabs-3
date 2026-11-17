@@ -21,11 +21,13 @@ constexpr int W=1600,H=900,Top=58,Side=300;
 const Color BG{8,8,17,255},Panel{12,12,25,255},Panel2{20,20,39,255},Line{55,53,86,255};
 const Color Purple{125,121,207,255},Lilac{197,193,248,255},Text{229,226,250,255},Muted{139,136,171,255};
 enum class Screen{Menu,Game,Settings};
-enum class Tool{Select,Node,Member,Rope,Load,Heat,Explode,Ignite};
+enum class Tool{Select,Node,Member,Rope,Load,Heat,Explode,Ignite,Ladder,Stairs,Elevator};
 struct App{
  Screen screen=Screen::Menu; Tool tool=Tool::Select; MaterialKind material=MaterialKind::Steel;
  bool paused=false,stress=true; float zoom=1; Vector2 pan{0,0};
- NodeId firstNode=0,selectedNode=0; MemberId selectedMember=0; std::string status="Ready — build a structure";
+ NodeId firstNode=0,selectedNode=0; MemberId selectedMember=0;
+ bool hasFirstConnectorPoint=false; Vec2 firstConnectorPoint{};
+ std::string status="Ready — build a structure";
 };
 float clampf(float x,float a,float b){return std::max(a,std::min(b,x));}
 Color materialColor(MaterialKind m){auto c=materialProfile(m).color;return {c.r,c.g,c.b,255};}
@@ -74,6 +76,48 @@ void drawWorld(const StructuralWorld&w,App&a){
  for(float x=std::fmod(105+a.pan.x,step);x<vw;x+=step)DrawLine((int)x,Top,(int)x,GetScreenHeight(),Color{34,33,62,255});
  for(float y=std::fmod(GetScreenHeight()-100+a.pan.y,step);y<GetScreenHeight();y+=step)DrawLine(0,(int)y,vw,(int)y,Color{34,33,62,255});
  Vector2 groundA=worldToScreen({0,0},a),groundB=worldToScreen({40,0},a);DrawLineEx(groundA,groundB,3,Color{100,98,145,255});
+ for(const auto& connector:w.connectors()){
+  const Vector2 p0=worldToScreen(connector.a,a),p1=worldToScreen(connector.b,a);
+  const Color color=connector.falling?Color{235,164,118,255}:
+   connector.kind==ConnectorKind::Elevator?Color{113,201,205,255}:
+   connector.kind==ConnectorKind::Stairs?Color{174,166,224,255}:Color{213,185,137,255};
+  const float width=connector.width*scale(a);
+  const float dx=connector.b.x-connector.a.x,dy=connector.b.y-connector.a.y;
+  const float span=std::max(0.001f,std::hypot(dx,dy));
+  const float nx=-dy/span,ny=dx/span;
+  if(connector.kind==ConnectorKind::Elevator){
+   const float ox=nx*connector.width*.5f,oy=ny*connector.width*.5f;
+   DrawLineEx(worldToScreen({connector.a.x+ox,connector.a.y+oy},a),
+    worldToScreen({connector.b.x+ox,connector.b.y+oy},a),std::max(2.0f,width*.12f),color);
+   DrawLineEx(worldToScreen({connector.a.x-ox,connector.a.y-oy},a),
+    worldToScreen({connector.b.x-ox,connector.b.y-oy},a),std::max(2.0f,width*.12f),color);
+   const Vector2 center=worldToScreen(
+    {(connector.a.x+connector.b.x)*.5f,(connector.a.y+connector.b.y)*.5f},a);
+   const Rectangle cabin{center.x,center.y,width*.72f,width*.72f};
+   const Vector2 origin{width*.36f,width*.36f};
+   DrawRectanglePro(cabin,origin,-std::atan2(dy,dx)*RAD2DEG,Color{72,153,164,95});
+   DrawRectanglePro(cabin,origin,-std::atan2(dy,dx)*RAD2DEG,color);
+  }else if(connector.kind==ConnectorKind::Ladder){
+   const float ox=connector.width*scale(a)*1.25f;
+   DrawLineEx({p0.x-nx*ox,p0.y+ny*ox},{p1.x-nx*ox,p1.y+ny*ox},2.0f,color);
+   DrawLineEx({p0.x+nx*ox,p0.y-ny*ox},{p1.x+nx*ox,p1.y-ny*ox},2.0f,color);
+   const int rungs=std::max(2,static_cast<int>(span/0.28f));
+   for(int i=1;i<rungs;++i){const float t=static_cast<float>(i)/rungs;
+    const Vector2 center{p0.x+(p1.x-p0.x)*t,p0.y+(p1.y-p0.y)*t};
+    DrawLineEx({center.x-nx*ox,center.y+ny*ox},{center.x+nx*ox,center.y-ny*ox},2.0f,color);
+   }
+  }else{
+   DrawLineEx(p0,p1,std::max(3.0f,width*.22f),color);
+   const int steps=std::max(3,static_cast<int>(span/0.24f));
+   for(int i=1;i<steps;++i){const float t=static_cast<float>(i)/steps;
+    const Vector2 center{p0.x+(p1.x-p0.x)*t,p0.y+(p1.y-p0.y)*t};
+    DrawLineEx({center.x-nx*width*.32f,center.y+ny*width*.32f},
+     {center.x+nx*width*.32f,center.y-ny*width*.32f},3.0f,color);
+   }
+  }
+  DrawCircleV(p0,3.0f,color);DrawCircleV(p1,3.0f,color);
+ }
+ if(a.hasFirstConnectorPoint){const Vector2 mark=worldToScreen(a.firstConnectorPoint,a);DrawCircleLines((int)mark.x,(int)mark.y,10,Purple);}
  for(const auto&m:w.members()){
   Color c=m.broken?Color{105,94,111,255}:(a.stress?stressColor(m.stressRatio):materialColor(m.material));
   if(m.yielding&&!m.broken)c=Color{245,156,91,255};
@@ -105,15 +149,15 @@ void drawSidebar(StructuralWorld&w,App&a){
  const bool compact=height<850;
  DrawRectangle(x,Top,Side,height-Top,Panel);DrawLine(x,Top,x,height,Line);
  DrawText("STRUCTURAL LAB",x+20,80,9,Purple);DrawText("Toolbox",x+20,101,26,Text);DrawLine(x+18,140,x+Side-18,140,Line);DrawText("TOOLS",x+20,158,9,Muted);
- const char* names[]={"Select","Add node","Connect","Rope","Add load","Heat","Explode","Ignite"};
- Tool tools[]={Tool::Select,Tool::Node,Tool::Member,Tool::Rope,Tool::Load,Tool::Heat,Tool::Explode,Tool::Ignite};
+ const char* names[]={"Select","Add node","Connect","Rope","Add load","Heat","Explode","Ignite","Ladder","Stairs","Elevator"};
+ Tool tools[]={Tool::Select,Tool::Node,Tool::Member,Tool::Rope,Tool::Load,Tool::Heat,Tool::Explode,Tool::Ignite,Tool::Ladder,Tool::Stairs,Tool::Elevator};
  const float toolStart=compact?160.0f:180.0f,toolStep=compact?31.0f:37.0f,toolHeight=compact?27.0f:32.0f;
  const float toolWidth=(Side-48.0f)/2.0f;
- for(int i=0;i<8;i++){
+ for(int i=0;i<11;i++){
   const float bx=static_cast<float>(x+18)+(i%2)*(toolWidth+12.0f);
   const float by=toolStart+(i/2)*toolStep;
   if(button({bx,by,toolWidth,toolHeight},names[i],a.tool==tools[i])){
-   a.tool=tools[i];a.firstNode=0;a.status=std::string(names[i])+" selected";
+   a.tool=tools[i];a.firstNode=0;a.hasFirstConnectorPoint=false;a.status=std::string(names[i])+" selected";
   }
  }
  const float materialLine=compact?382.0f:445.0f,materialTitle=compact?395.0f:461.0f,materialStart=compact?414.0f:482.0f,materialStep=compact?30.0f:35.0f,materialHeight=compact?25.0f:28.0f;
@@ -129,10 +173,12 @@ void drawSidebar(StructuralWorld&w,App&a){
  if(compact){
   DrawText(TextFormat("%i nodes / %i members",(int)w.nodeCount(),(int)w.memberCount()),x+20,height-52,9,Text);
   DrawText(TextFormat("%i failed members",(int)w.brokenMemberCount()),x+20,height-36,8,Color{232,143,116,255});
-  DrawText("GRID SCALE / 5 FT² PER CELL",x+20,height-17,7,Muted);
+  DrawText(TextFormat("%i connectors / %i falling  ·  GRID 5 FT²/CELL",
+   (int)w.connectorCount(),(int)w.fallingConnectorCount()),x+20,height-17,7,Muted);
  }else{
   DrawText(TextFormat("%i nodes  /  %i members",(int)w.nodeCount(),(int)w.memberCount()),x+20,746,11,Text);
   DrawText(TextFormat("%i failed members",(int)w.brokenMemberCount()),x+20,768,10,Color{232,143,116,255});
+  DrawText(TextFormat("%i connectors  /  %i falling",(int)w.connectorCount(),(int)w.fallingConnectorCount()),x+20,785,8,Muted);
   DrawText("GRID SCALE / 5 FT² PER CELL",x+20,height-44,8,Muted);
  }
 }
@@ -140,8 +186,8 @@ void input(StructuralWorld&w,App&a){
  Vector2 mouse=GetMousePosition();
  // Keyboard commands are global to the active workspace, not the pointer region.
  if(IsKeyPressed(KEY_SPACE))a.paused=!a.paused;
- if(IsKeyPressed(KEY_R)){w.resetDemo();a.firstNode=0;a.selectedNode=0;a.selectedMember=0;}
- auto chooseTool=[&](Tool tool){if(a.tool!=tool){a.tool=tool;a.firstNode=0;}};
+ if(IsKeyPressed(KEY_R)){w.resetDemo();a.firstNode=0;a.selectedNode=0;a.selectedMember=0;a.hasFirstConnectorPoint=false;}
+ auto chooseTool=[&](Tool tool){if(a.tool!=tool){a.tool=tool;a.firstNode=0;a.hasFirstConnectorPoint=false;}};
  if(IsKeyPressed(KEY_ONE))chooseTool(Tool::Select);
  if(IsKeyPressed(KEY_TWO))chooseTool(Tool::Node);
  if(IsKeyPressed(KEY_THREE))chooseTool(Tool::Member);
@@ -150,6 +196,9 @@ void input(StructuralWorld&w,App&a){
  if(IsKeyPressed(KEY_FIVE))chooseTool(Tool::Heat);
  if(IsKeyPressed(KEY_E))chooseTool(Tool::Explode);
  if(IsKeyPressed(KEY_I))chooseTool(Tool::Ignite);
+ if(IsKeyPressed(KEY_L))chooseTool(Tool::Ladder);
+ if(IsKeyPressed(KEY_S))chooseTool(Tool::Stairs);
+ if(IsKeyPressed(KEY_V))chooseTool(Tool::Elevator);
  if(mouse.x>GetScreenWidth()-Side||mouse.y<Top)return;
  if(IsMouseButtonDown(MOUSE_BUTTON_MIDDLE)){Vector2 d=GetMouseDelta();a.pan.x+=d.x;a.pan.y+=d.y;}
  float wheel=GetMouseWheelMove();if(wheel!=0&&inView(mouse))a.zoom=clampf(a.zoom+wheel*.08f,.45f,2.4f);
@@ -167,6 +216,19 @@ void input(StructuralWorld&w,App&a){
   MemberId id=w.addMember(a.firstNode,n,a.material,role);
   a.firstNode=0;a.selectedMember=id;
   a.status=id?(role==MemberRole::Rope?"Flexible rope connected":"Structural member connected"):"Could not connect those nodes";
+  return;
+ }
+ if(a.tool==Tool::Ladder||a.tool==Tool::Stairs||a.tool==Tool::Elevator){
+  if(!a.hasFirstConnectorPoint){
+   a.firstConnectorPoint=p;a.hasFirstConnectorPoint=true;
+   a.status="First landing marked — click the second supported landing";return;
+  }
+  const ConnectorKind kind=a.tool==Tool::Ladder?ConnectorKind::Ladder:
+   a.tool==Tool::Elevator?ConnectorKind::Elevator:ConnectorKind::Stairs;
+  const ConnectorId id=w.addConnector(kind,a.firstConnectorPoint,p);
+  a.hasFirstConnectorPoint=false;
+  a.status=id?"Connector added — it follows its supports and falls if they fail":
+   "Landings are too close or invalid";
   return;
  }
  if(a.tool==Tool::Load){w.addLoad(p,220);a.status="220 kg test load added";return;}

@@ -434,12 +434,230 @@
       return nearest;
     }
 
-    function addConnector(kind, a, b) {
+    function normalizeConnectorAnchor(anchor) {
+      if (!anchor || typeof anchor !== "object") return null;
+      if (anchor.type === "node" && Number.isInteger(anchor.id)) {
+        return { type: "node", id: anchor.id };
+      }
+      if (anchor.type === "member" && Number.isInteger(anchor.id) &&
+          Number.isInteger(anchor.segmentIndex) && Number.isFinite(anchor.t)) {
+        return {
+          type: "member", id: anchor.id, segmentIndex: Math.max(0, anchor.segmentIndex),
+          t: clamp(anchor.t, 0, 1)
+        };
+      }
+      return null;
+    }
+
+    function resolveConnectorAnchor(anchor, fallback, world) {
+      if (!anchor) return null;
+      const nodes = Array.isArray(world.nodes) ? world.nodes : [];
+      const members = Array.isArray(world.members) ? world.members : [];
+      if (anchor.type === "node") {
+        const node = nodes.find(item => item && item.id === anchor.id);
+        if (node) return { point: { x: node.x, y: node.y }, anchor };
+      }
+      if (anchor.type === "member") {
+        const member = members.find(item => item && item.id === anchor.id);
+        if (member) {
+          if (member.broken || member.detached || member.kind === "rope" ||
+              !Array.isArray(member.points) || member.points.length < 2) return null;
+          const index = clamp(anchor.segmentIndex, 0, member.points.length - 2);
+          const a = member.points[index], b = member.points[index + 1];
+          const t = clamp(anchor.t, 0, 1);
+          return {
+            point: { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t },
+            anchor: { type: "member", id: member.id, segmentIndex: index, t }
+          };
+        }
+      }
+
+      // Auto-connect can merge coincident nodes or split intersecting members
+      // when a test starts. Rebind a stale saved anchor to nearby live geometry.
+      if (!fallback) return null;
+      let nearestNode = null, nearestNodeDistance = 18;
+      for (const node of nodes) {
+        if (!node || !Number.isFinite(node.x + node.y)) continue;
+        const d = distance(fallback, node);
+        if (d < nearestNodeDistance) { nearestNode = node; nearestNodeDistance = d; }
+      }
+      if (nearestNode) {
+        return {
+          point: { x: nearestNode.x, y: nearestNode.y },
+          anchor: { type: "node", id: nearestNode.id }
+        };
+      }
+
+      let nearest = null, nearestDistance = 14;
+      for (const member of members) {
+        if (!member || member.broken || member.detached || member.kind === "rope" ||
+            !Array.isArray(member.points) || member.points.length < 2) continue;
+        for (let i = 1; i < member.points.length; i++) {
+          const hit = nearestPointOnSegment(fallback, member.points[i - 1], member.points[i]);
+          const d = distance(fallback, hit);
+          if (d < nearestDistance) {
+            nearestDistance = d;
+            nearest = {
+              point: { x: hit.x, y: hit.y },
+              anchor: { type: "member", id: member.id, segmentIndex: i - 1, t: hit.t }
+            };
+          }
+        }
+      }
+      return nearest;
+    }
+
+    function startConnectorFall(link, dt, resolvedA, resolvedB) {
+      if (resolvedA) link.a = { ...resolvedA.point };
+      if (resolvedB) link.b = { ...resolvedB.point };
+      const safeDt = Math.max(1 / 240, finite(dt, 1 / 120));
+      const previousA = link.previousA || link.a;
+      const previousB = link.previousB || link.b;
+      const oldAngle = Math.atan2(previousB.y - previousA.y, previousB.x - previousA.x);
+      const newAngle = Math.atan2(link.b.y - link.a.y, link.b.x - link.a.x);
+      let angleDelta = newAngle - oldAngle;
+      while (angleDelta > Math.PI) angleDelta -= Math.PI * 2;
+      while (angleDelta < -Math.PI) angleDelta += Math.PI * 2;
+      link.centerX = (link.a.x + link.b.x) * 0.5;
+      link.centerY = (link.a.y + link.b.y) * 0.5;
+      link.length = Math.max(1, distance(link.a, link.b));
+      link.angle = newAngle;
+      link.vx = ((link.a.x - previousA.x) + (link.b.x - previousB.x)) * 0.5 / safeDt;
+      link.vy = ((link.a.y - previousA.y) + (link.b.y - previousB.y)) * 0.5 / safeDt;
+      link.angularVelocity = clamp(angleDelta / safeDt, -5, 5);
+      link.falling = true;
+    }
+
+    function connectorSupportY(link, previousBottom, nextBottom, world) {
+      const ground = finite(world.ground, 0);
+      let best = null;
+      const consider = surfaceY => {
+        if (!Number.isFinite(surfaceY) || surfaceY < previousBottom - 3 || surfaceY > nextBottom + 3) return;
+        if (best === null || surfaceY < best) best = surfaceY;
+      };
+      if (previousBottom >= ground - 3 || nextBottom >= ground) consider(ground);
+
+      for (const member of Array.isArray(world.members) ? world.members : []) {
+        if (!member || member.broken || member.detached || member.kind === "rope" ||
+            !Array.isArray(member.points) || member.points.length < 2) continue;
+        for (let i = 1; i < member.points.length; i++) {
+          const a = member.points[i - 1], b = member.points[i];
+          const dx = b.x - a.x, dy = b.y - a.y;
+          if (Math.abs(dx) < 0.001 || Math.abs(dy / dx) > 0.35) continue;
+          const minX = Math.min(a.x, b.x) - link.length * 0.5;
+          const maxX = Math.max(a.x, b.x) + link.length * 0.5;
+          if (link.centerX < minX || link.centerX > maxX) continue;
+          const t = clamp((link.centerX - a.x) / dx, 0, 1);
+          consider(a.y + dy * t);
+        }
+      }
+      return best;
+    }
+
+    function updateFallingConnector(link, dt, world) {
+      const safeDt = clamp(finite(dt), 0, 0.05);
+      if (safeDt <= 0) return;
+      const previousCenterY = link.centerY;
+      const damping = Math.pow(0.997, safeDt * 60);
+      link.vx *= damping;
+      link.vy += GRAVITY * safeDt;
+      link.angularVelocity *= Math.pow(0.994, safeDt * 60);
+      link.centerX += link.vx * safeDt;
+      link.centerY += link.vy * safeDt;
+      link.angle += link.angularVelocity * safeDt;
+
+      const extentY = Math.abs(Math.sin(link.angle)) * link.length * 0.5 +
+        Math.abs(Math.cos(link.angle)) * link.width * 0.5;
+      const supportY = connectorSupportY(
+        link, previousCenterY + extentY, link.centerY + extentY, world
+      );
+      if (supportY !== null) {
+        const impactSpeed = link.vy;
+        link.centerY = supportY - extentY;
+        link.vy = impactSpeed > 55 ? -impactSpeed * 0.065 : 0;
+        link.vx *= 0.72;
+        link.angularVelocity *= 0.38;
+        if (Math.abs(link.vy) < 10) link.vy = 0;
+        if (Math.abs(link.angularVelocity) < 0.035) link.angularVelocity = 0;
+      }
+
+      const width = Math.max(1, finite(world.width, 100000));
+      const extentX = Math.abs(Math.cos(link.angle)) * link.length * 0.5 +
+        Math.abs(Math.sin(link.angle)) * link.width * 0.5;
+      if (link.centerX < extentX) {
+        link.centerX = extentX;
+        link.vx = Math.abs(link.vx) * 0.12;
+      } else if (link.centerX > width - extentX) {
+        link.centerX = width - extentX;
+        link.vx = -Math.abs(link.vx) * 0.12;
+      }
+
+      const halfX = Math.cos(link.angle) * link.length * 0.5;
+      const halfY = Math.sin(link.angle) * link.length * 0.5;
+      link.a = { x: link.centerX - halfX, y: link.centerY - halfY };
+      link.b = { x: link.centerX + halfX, y: link.centerY + halfY };
+      link.previousA = { ...link.a };
+      link.previousB = { ...link.b };
+    }
+
+    function addConnector(kind, a, b, attachments) {
       if (!["ladder", "stairs", "elevator"].includes(kind)) return null;
       if (!a || !b || !Number.isFinite(a.x + a.y + b.x + b.y) || distance(a, b) < 28) return null;
-      const connector = { id: nextConnectorId++, kind, a: { x: a.x, y: a.y }, b: { x: b.x, y: b.y } };
+      const physicsEnabled = !!(attachments && typeof attachments === "object");
+      const connector = {
+        id: nextConnectorId++, kind,
+        a: { x: a.x, y: a.y }, b: { x: b.x, y: b.y },
+        previousA: { x: a.x, y: a.y }, previousB: { x: b.x, y: b.y },
+        anchors: physicsEnabled ? {
+          a: normalizeConnectorAnchor(attachments.a),
+          b: normalizeConnectorAnchor(attachments.b)
+        } : null,
+        physicsEnabled, falling: false,
+        restLength: distance(a, b), length: distance(a, b),
+        width: kind === "elevator" ? 28 : kind === "stairs" ? 9 : 3,
+        centerX: (a.x + b.x) * 0.5, centerY: (a.y + b.y) * 0.5,
+        angle: Math.atan2(b.y - a.y, b.x - a.x),
+        vx: 0, vy: 0, angularVelocity: 0
+      };
       connectors.push(connector);
       return connector;
+    }
+
+    function updateConnectors(dt, world = {}) {
+      const safeDt = clamp(finite(dt), 0, 0.05);
+      if (safeDt <= 0) return;
+      for (const link of connectors) {
+        if (!link.physicsEnabled) continue;
+        if (link.falling) {
+          updateFallingConnector(link, safeDt, world);
+          continue;
+        }
+
+        const resolvedA = resolveConnectorAnchor(link.anchors?.a, link.a, world);
+        const resolvedB = resolveConnectorAnchor(link.anchors?.b, link.b, world);
+        if (resolvedA && resolvedB) {
+          const span = distance(resolvedA.point, resolvedB.point);
+          if (span >= link.restLength * 0.78 && span <= link.restLength * 1.22) {
+            const previousA = link.a, previousB = link.b;
+            link.previousA = { ...previousA };
+            link.previousB = { ...previousB };
+            link.a = { ...resolvedA.point };
+            link.b = { ...resolvedB.point };
+            link.anchors.a = resolvedA.anchor;
+            link.anchors.b = resolvedB.anchor;
+            link.centerX = (link.a.x + link.b.x) * 0.5;
+            link.centerY = (link.a.y + link.b.y) * 0.5;
+            link.length = span;
+            link.angle = Math.atan2(link.b.y - link.a.y, link.b.x - link.a.x);
+            continue;
+          }
+        }
+
+        // A lost attachment or excessive relative floor movement releases the
+        // complete stair/shaft assembly as a falling rigid connector.
+        startConnectorFall(link, safeDt, resolvedA, resolvedB);
+        updateFallingConnector(link, safeDt, world);
+      }
     }
 
     function addExit(point) {
@@ -470,7 +688,9 @@
 
     function floorLevels(ground = 0) {
       const values = [finite(ground)];
-      for (const link of connectors) values.push(link.a.y, link.b.y);
+      for (const link of connectors) {
+        if (!link.falling) values.push(link.a.y, link.b.y);
+      }
       for (const exit of exits) values.push(exit.y);
       const unique = [];
       for (const value of values.sort((a, b) => b - a)) {
@@ -499,6 +719,7 @@
         return nodes.length - 1;
       };
       for (const link of connectors) {
+        if (link.falling) continue;
         connectorNodeIndices.set(link.id, {
           a: addNode(link.a, "connector", link.id),
           b: addNode(link.b, "connector", link.id)
@@ -518,6 +739,7 @@
         }
       }
       for (const link of connectors) {
+        if (link.falling) continue;
         const indices = connectorNodeIndices.get(link.id);
         const d = distance(nodes[indices.a], nodes[indices.b]);
         const multiplier = link.kind === "ladder" ? 1.85 : link.kind === "stairs" ? 1.28 : 0.82;
@@ -641,18 +863,33 @@
           }
           ctx.lineTo(b.x, b.y); ctx.stroke();
         } else {
+          // Draw the shaft in its local orientation so a collapsed elevator
+          // visibly rotates with the same rigid-body transform as its physics.
+          const dx = b.x - a.x, dy = b.y - a.y;
+          const length = Math.max(1, Math.hypot(dx, dy));
+          const nx = -dy / length * 13, ny = dx / length * 13;
+          const angle = Math.atan2(dy, dx);
+          const centerX = (a.x + b.x) * 0.5;
+          const centerY = (a.y + b.y) * 0.5;
           ctx.strokeStyle = "#82c3c5"; ctx.lineWidth = 2;
-          const shaftX = (a.x + b.x) * 0.5;
           ctx.setLineDash([5, 4]);
-          ctx.beginPath(); ctx.moveTo(shaftX - 13, a.y); ctx.lineTo(shaftX - 13, b.y);
-          ctx.moveTo(shaftX + 13, a.y); ctx.lineTo(shaftX + 13, b.y); ctx.stroke();
+          ctx.beginPath();
+          ctx.moveTo(a.x + nx, a.y + ny); ctx.lineTo(b.x + nx, b.y + ny);
+          ctx.moveTo(a.x - nx, a.y - ny); ctx.lineTo(b.x - nx, b.y - ny);
+          ctx.stroke();
           ctx.setLineDash([]);
-          const cabinY = (a.y + b.y) * 0.5;
           ctx.fillStyle = "rgba(84,166,174,.24)";
-          ctx.fillRect(shaftX - 10, cabinY - 10, 20, 20);
-          ctx.strokeRect(shaftX - 10, cabinY - 10, 20, 20);
-          ctx.beginPath(); ctx.moveTo(a.x - 22, a.y); ctx.lineTo(a.x + 22, a.y);
-          ctx.moveTo(b.x - 22, b.y); ctx.lineTo(b.x + 22, b.y); ctx.stroke();
+          ctx.strokeStyle = "#82c3c5";
+          ctx.save();
+          ctx.translate(centerX, centerY);
+          ctx.rotate(angle);
+          ctx.fillRect(-10, -10, 20, 20);
+          ctx.strokeRect(-10, -10, 20, 20);
+          ctx.restore();
+          ctx.beginPath();
+          ctx.moveTo(a.x - nx, a.y - ny); ctx.lineTo(a.x + nx, a.y + ny);
+          ctx.moveTo(b.x - nx, b.y - ny); ctx.lineTo(b.x + nx, b.y + ny);
+          ctx.stroke();
         }
         ctx.fillStyle = "#d6d1a8";
         ctx.beginPath(); ctx.arc(a.x, a.y, 3, 0, Math.PI * 2); ctx.arc(b.x, b.y, 3, 0, Math.PI * 2); ctx.fill();
@@ -707,6 +944,17 @@
       for (const link of connectors) {
         link.a.x *= scaleX; link.a.y *= scaleY;
         link.b.x *= scaleX; link.b.y *= scaleY;
+        if (link.previousA) {
+          link.previousA.x *= scaleX; link.previousA.y *= scaleY;
+        }
+        if (link.previousB) {
+          link.previousB.x *= scaleX; link.previousB.y *= scaleY;
+        }
+        link.centerX *= scaleX; link.centerY *= scaleY;
+        link.vx *= scaleX; link.vy *= scaleY;
+        link.width *= (scaleX + scaleY) * 0.5;
+        link.length = distance(link.a, link.b);
+        link.restLength = link.length;
       }
       for (const exit of exits) { exit.x *= scaleX; exit.y *= scaleY; }
       for (const body of debris) {
@@ -725,7 +973,14 @@
 
     function captureNavigation() {
       return {
-        connectors: connectors.map(link => ({ id: link.id, kind: link.kind, a: { ...link.a }, b: { ...link.b } })),
+        connectors: connectors.map(link => ({
+          id: link.id, kind: link.kind, a: { ...link.a }, b: { ...link.b },
+          physicsEnabled: !!link.physicsEnabled,
+          anchors: link.anchors ? {
+            a: link.anchors.a ? { ...link.anchors.a } : null,
+            b: link.anchors.b ? { ...link.anchors.b } : null
+          } : null
+        })),
         exits: exits.map(exit => ({ ...exit })),
         nextConnectorId, nextExitId
       };
@@ -746,7 +1001,23 @@
           ? link.id : 1;
         while (usedConnectorIds.has(id)) id++;
         usedConnectorIds.add(id);
-        connectors.push({ id, kind: link.kind, a: { x: link.a.x, y: link.a.y }, b: { x: link.b.x, y: link.b.y } });
+        const a = { x: link.a.x, y: link.a.y };
+        const b = { x: link.b.x, y: link.b.y };
+        const physicsEnabled = link.physicsEnabled === true;
+        connectors.push({
+          id, kind: link.kind, a, b,
+          previousA: { ...a }, previousB: { ...b },
+          physicsEnabled,
+          anchors: physicsEnabled ? {
+            a: normalizeConnectorAnchor(link.anchors?.a),
+            b: normalizeConnectorAnchor(link.anchors?.b)
+          } : null,
+          falling: false, restLength: distance(a, b), length: distance(a, b),
+          width: link.kind === "elevator" ? 28 : link.kind === "stairs" ? 9 : 3,
+          centerX: (a.x + b.x) * 0.5, centerY: (a.y + b.y) * 0.5,
+          angle: Math.atan2(b.y - a.y, b.x - a.x),
+          vx: 0, vy: 0, angularVelocity: 0
+        });
       }
       for (const exit of savedExits) {
         if (!exit || !Number.isFinite(exit.x) || !Number.isFinite(exit.y)) continue;
@@ -775,7 +1046,7 @@
 
     return {
       fractureMember, emitDust, emitSparks, emitSmoke, emitFlame, emitExplosion,
-      step, updateParticles, smokeDensityAt, fireIntensityAt, debrisClearanceAt,
+      step, updateConnectors, updateParticles, smokeDensityAt, fireIntensityAt, debrisClearanceAt,
       addConnector, addExit, removeNavigationAt, floorLevels, floorIndexAt,
       findRouteToExit, occupantPerception, drawNavigation, drawDebrisAndParticles,
       captureNavigation, restoreNavigation, scaleWorld, clearDynamic, clearAll,

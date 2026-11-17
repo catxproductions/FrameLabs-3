@@ -89,6 +89,24 @@ struct MemberData {
 struct NodeData { NodeId id=0; std::size_t particle=0; };
 struct LoadData { LoadView view{}; Vec2 velocity{}; };
 
+enum class ConnectorAnchorKind : std::uint8_t { None, Node, Member };
+struct ConnectorAnchor {
+    ConnectorAnchorKind kind = ConnectorAnchorKind::None;
+    NodeId node = 0;
+    MemberId member = 0;
+    std::size_t segment = 0;
+    float t = 0.0f;
+};
+struct ConnectorData {
+    ConnectorView view{};
+    ConnectorAnchor anchorA{}, anchorB{};
+    Vec2 previousA{}, previousB{};
+    Vec2 center{}, velocity{};
+    float angle = 0.0f;
+    float angularVelocity = 0.0f;
+    float restLength = 0.0f;
+};
+
 void applyParticleImpulse(Particle& particle, Vec2 impulse, float dt) {
     if (particle.inverseMass <= 0.0f || dt <= 1e-6f) return;
     Vec2 velocity = mul(sub(particle.p, particle.previous), 1.0f / dt);
@@ -298,7 +316,10 @@ struct StructuralWorld::Impl {
     std::vector<MemberView> memberViews;
     std::vector<LoadData> loadData;
     std::vector<LoadView> loadViews;
+    std::vector<ConnectorData> connectorData;
+    std::vector<ConnectorView> connectorViews;
     NodeId nextNode=1;
+    ConnectorId nextConnector=1;
     MemberId nextMember=1;
     std::uint32_t nextLoad=1;
     float time=0, wind=0;
@@ -320,6 +341,169 @@ struct StructuralWorld::Impl {
         for(auto& m:memberData) if(m.id==id) return &m;
         return nullptr;
     }
+    ConnectorAnchor findConnectorAnchor(Vec2 point) const {
+        ConnectorAnchor result{};
+        float nearestNode = 0.36f;
+        for (const auto& node : nodes) {
+            const Vec2 position = particles[node.particle].p;
+            const float d = distance(point, position);
+            if (d < nearestNode) {
+                nearestNode = d;
+                result = {};
+                result.kind = ConnectorAnchorKind::Node;
+                result.node = node.id;
+            }
+        }
+        if (result.kind == ConnectorAnchorKind::Node) return result;
+
+        float nearestMember = 0.30f;
+        for (const auto& member : memberData) {
+            if (member.broken || member.role == MemberRole::Rope) continue;
+            for (std::size_t i = 1; i < member.particles.size(); ++i) {
+                const Vec2 a = particles[member.particles[i - 1]].p;
+                const Vec2 b = particles[member.particles[i]].p;
+                const Vec2 ab = sub(b, a);
+                const float denominator = dot(ab, ab);
+                const float t = denominator > 1e-8f
+                    ? clampf(dot(sub(point, a), ab) / denominator, 0.0f, 1.0f) : 0.0f;
+                const Vec2 closest = add(a, mul(ab, t));
+                const float d = distance(point, closest);
+                if (d < nearestMember) {
+                    nearestMember = d;
+                    result.kind = ConnectorAnchorKind::Member;
+                    result.member = member.id;
+                    result.segment = i - 1;
+                    result.t = t;
+                }
+            }
+        }
+        return result;
+    }
+
+    bool resolveConnectorAnchor(const ConnectorAnchor& anchor, Vec2& position) const {
+        if (anchor.kind == ConnectorAnchorKind::Node) {
+            const Particle* particle = particleFor(anchor.node);
+            if (!particle) return false;
+            position = particle->p;
+            return true;
+        }
+        if (anchor.kind == ConnectorAnchorKind::Member) {
+            const MemberData* member = nullptr;
+            for (const auto& candidate : memberData) {
+                if (candidate.id == anchor.member) { member = &candidate; break; }
+            }
+            if (!member || member->broken || member->role == MemberRole::Rope ||
+                member->particles.size() < 2) return false;
+            const std::size_t segment = std::min(anchor.segment, member->particles.size() - 2);
+            const Vec2 a = particles[member->particles[segment]].p;
+            const Vec2 b = particles[member->particles[segment + 1]].p;
+            position = add(a, mul(sub(b, a), clampf(anchor.t, 0.0f, 1.0f)));
+            return true;
+        }
+        return false;
+    }
+
+    void updateFallingConnector(ConnectorData& connector, float dt) {
+        const Vec2 previousCenter = connector.center;
+        const float previousAngle = connector.angle;
+        connector.velocity.x *= std::exp(-0.24f * dt);
+        connector.velocity.y -= Gravity * dt;
+        connector.angularVelocity *= std::exp(-0.82f * dt);
+        connector.center = add(connector.center, mul(connector.velocity, dt));
+        connector.angle = wrapAngle(connector.angle + connector.angularVelocity * dt);
+
+        const float halfLength = connector.restLength * 0.5f;
+        const float halfWidth = connector.view.width * 0.5f;
+        const float previousExtent = std::fabs(std::sin(previousAngle)) * halfLength +
+            std::fabs(std::cos(previousAngle)) * halfWidth;
+        const float nextExtent = std::fabs(std::sin(connector.angle)) * halfLength +
+            std::fabs(std::cos(connector.angle)) * halfWidth;
+        const float previousBottom = previousCenter.y - previousExtent;
+        const float nextBottom = connector.center.y - nextExtent;
+
+        float supportY = -std::numeric_limits<float>::max();
+        const auto considerSurface = [&](float y) {
+            if (previousBottom >= y - 0.002f && nextBottom <= y + 0.002f) {
+                supportY = std::max(supportY, y);
+            }
+        };
+        considerSurface(GroundY);
+        for (const auto& member : memberData) {
+            if (member.broken || member.role == MemberRole::Rope ||
+                member.particles.size() < 2) continue;
+            for (std::size_t i = 1; i < member.particles.size(); ++i) {
+                const Vec2 a = particles[member.particles[i - 1]].p;
+                const Vec2 b = particles[member.particles[i]].p;
+                const Vec2 delta = sub(b, a);
+                if (std::fabs(delta.x) < 1e-5f ||
+                    std::fabs(delta.y / delta.x) > 0.35f) continue;
+                const float minX = std::min(a.x, b.x) - halfLength;
+                const float maxX = std::max(a.x, b.x) + halfLength;
+                if (connector.center.x < minX || connector.center.x > maxX) continue;
+                const float t = clampf((connector.center.x - a.x) / delta.x, 0.0f, 1.0f);
+                considerSurface(a.y + delta.y * t);
+            }
+        }
+
+        if (supportY > -std::numeric_limits<float>::max()) {
+            connector.center.y = supportY + nextExtent;
+            connector.velocity.y = connector.velocity.y < -0.9f
+                ? -connector.velocity.y * 0.07f : 0.0f;
+            connector.velocity.x *= 0.70f;
+            connector.angularVelocity *= 0.34f;
+            if (std::fabs(connector.velocity.y) < 0.22f) connector.velocity.y = 0.0f;
+            if (std::fabs(connector.angularVelocity) < 0.025f) connector.angularVelocity = 0.0f;
+        }
+
+        const float halfX = std::cos(connector.angle) * halfLength;
+        const float halfY = std::sin(connector.angle) * halfLength;
+        connector.view.a = {connector.center.x - halfX, connector.center.y - halfY};
+        connector.view.b = {connector.center.x + halfX, connector.center.y + halfY};
+    }
+
+    void updateConnectors(float dt) {
+        for (auto& connector : connectorData) {
+            if (connector.view.falling) {
+                updateFallingConnector(connector, dt);
+                continue;
+            }
+            Vec2 resolvedA{}, resolvedB{};
+            const bool validA = resolveConnectorAnchor(connector.anchorA, resolvedA);
+            const bool validB = resolveConnectorAnchor(connector.anchorB, resolvedB);
+            if (validA && validB) {
+                const float span = distance(resolvedA, resolvedB);
+                if (span >= connector.restLength * 0.78f &&
+                    span <= connector.restLength * 1.22f) {
+                    connector.previousA = connector.view.a;
+                    connector.previousB = connector.view.b;
+                    connector.view.a = resolvedA;
+                    connector.view.b = resolvedB;
+                    connector.center = mul(add(resolvedA, resolvedB), 0.5f);
+                    connector.angle = angleOf(sub(resolvedB, resolvedA));
+                    continue;
+                }
+            }
+
+            // A lost landing support or excessive relative movement releases the
+            // complete stair/shaft assembly with inherited linear/angular motion.
+            if (validA) connector.view.a = resolvedA;
+            if (validB) connector.view.b = resolvedB;
+            const float safeDt = std::max(dt, 1e-5f);
+            const Vec2 oldCenter = mul(add(connector.previousA, connector.previousB), 0.5f);
+            const Vec2 newCenter = mul(add(connector.view.a, connector.view.b), 0.5f);
+            const float oldAngle = angleOf(sub(connector.previousB, connector.previousA));
+            const float newAngle = angleOf(sub(connector.view.b, connector.view.a));
+            connector.center = newCenter;
+            connector.velocity = mul(sub(newCenter, oldCenter), 1.0f / safeDt);
+            connector.angularVelocity = clampf(
+                wrapAngle(newAngle - oldAngle) / safeDt, -5.0f, 5.0f
+            );
+            connector.angle = newAngle;
+            connector.view.falling = true;
+            updateFallingConnector(connector, dt);
+        }
+    }
+
     void rebuildViews() {
         nodeViews.clear();
         for(const auto& n:nodes) {
@@ -358,6 +542,8 @@ struct StructuralWorld::Impl {
         }
         loadViews.clear();
         for(const auto& l:loadData) loadViews.push_back(l.view);
+        connectorViews.clear();
+        for (const auto& connector : connectorData) connectorViews.push_back(connector.view);
     }
 };
 
@@ -366,8 +552,10 @@ StructuralWorld::~StructuralWorld()=default;
 
 void StructuralWorld::clear() {
     impl_->particles.clear(); impl_->nodes.clear(); impl_->memberData.clear(); impl_->loadData.clear();
-    impl_->nodeViews.clear(); impl_->memberViews.clear(); impl_->loadViews.clear();
-    impl_->nextNode=1; impl_->nextMember=1; impl_->nextLoad=1; impl_->time=0; impl_->wind=0;
+    impl_->connectorData.clear();
+    impl_->nodeViews.clear(); impl_->memberViews.clear(); impl_->loadViews.clear(); impl_->connectorViews.clear();
+    impl_->nextNode=1; impl_->nextMember=1; impl_->nextLoad=1; impl_->nextConnector=1;
+    impl_->time=0; impl_->wind=0;
 }
 NodeId StructuralWorld::addNode(Vec2 p,bool pinned) {
     const NodeId id=impl_->nextNode++;
@@ -497,6 +685,41 @@ std::uint32_t StructuralWorld::findLoadNear(Vec2 p,float radius) const {
 bool StructuralWorld::removeLoad(std::uint32_t id) {
     auto it=std::remove_if(impl_->loadData.begin(),impl_->loadData.end(),[&](const auto& l){return l.view.id==id;});
     if(it==impl_->loadData.end())return false;impl_->loadData.erase(it,impl_->loadData.end());impl_->rebuildViews();return true;
+}
+
+ConnectorId StructuralWorld::addConnector(ConnectorKind kind, Vec2 landingA, Vec2 landingB) {
+    const float span = distance(landingA, landingB);
+    if (!std::isfinite(span) || span < 0.45f) return 0;
+    ConnectorData connector;
+    connector.view.id = impl_->nextConnector++;
+    connector.view.kind = kind;
+    connector.view.a = landingA;
+    connector.view.b = landingB;
+    connector.view.width = kind == ConnectorKind::Elevator ? 0.46f :
+        kind == ConnectorKind::Stairs ? 0.22f : 0.08f;
+    connector.anchorA = impl_->findConnectorAnchor(landingA);
+    connector.anchorB = impl_->findConnectorAnchor(landingB);
+    connector.previousA = landingA;
+    connector.previousB = landingB;
+    connector.center = mul(add(landingA, landingB), 0.5f);
+    connector.angle = angleOf(sub(landingB, landingA));
+    connector.restLength = span;
+    impl_->connectorData.push_back(connector);
+    impl_->rebuildViews();
+    return connector.view.id;
+}
+
+const std::vector<ConnectorView>& StructuralWorld::connectors() const noexcept {
+    return impl_->connectorViews;
+}
+std::size_t StructuralWorld::connectorCount() const noexcept {
+    return impl_->connectorData.size();
+}
+std::size_t StructuralWorld::fallingConnectorCount() const noexcept {
+    return static_cast<std::size_t>(std::count_if(
+        impl_->connectorData.begin(), impl_->connectorData.end(),
+        [](const ConnectorData& connector) { return connector.view.falling; }
+    ));
 }
 void StructuralWorld::applyHeat(Vec2 p,float radius,float degreesPerSecond,float dt) {
     for(auto& m:impl_->memberData)if(!m.broken){
@@ -737,6 +960,7 @@ void StructuralWorld::step(float dt) {
         }
         if(m.stress>1.0f||m.fatigue>fatigueLimit) m.broken=true;
     }
+    w.updateConnectors(dt);
     w.rebuildViews();
     }
 }

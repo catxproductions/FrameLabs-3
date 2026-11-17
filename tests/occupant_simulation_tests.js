@@ -68,3 +68,85 @@ test("upper-floor occupants traverse stairs and continue to a ground-floor exit"
   assert.equal(upperFloorOccupant.evacuated, true);
   assert.equal(upperFloorOccupant.floorY, 180);
 });
+
+test("untrained neural jump output cannot launch occupants without a validated jump gate", () => {
+  const worldSystems = createWorldSystems();
+  worldSystems.addExit({ x: 280, y: 180 });
+  const population = createPopulationSimulation({ agentApi: AgentFive, worldSystems });
+  const [occupant] = population.spawn(1, { width: 300, ground: 180 });
+  const world = { width: 300, ground: 180, members: [], loads: [], materialProfiles: {} };
+  population.step(1 / 120, world);
+  occupant.controls.jump = 1;
+  population.step(1 / 120, world);
+  assert.equal(occupant.grounded, true);
+  assert.equal(occupant.y, occupant.floorY);
+});
+
+test("jump output is accepted only when a host validates a jump opportunity", () => {
+  const worldSystems = createWorldSystems();
+  worldSystems.addExit({ x: 280, y: 180 });
+  const population = createPopulationSimulation({
+    agentApi: AgentFive, worldSystems, canJump: () => true
+  });
+  const [occupant] = population.spawn(1, { width: 300, ground: 180 });
+  const world = { width: 300, ground: 180, members: [], loads: [], materialProfiles: {} };
+  population.step(1 / 120, world);
+  occupant.controls.jump = 1;
+  population.step(1 / 120, world);
+  assert.equal(occupant.grounded, false);
+});
+
+test("gravity holds occupants on intact structural floors and drops them when the floor breaks", () => {
+  const worldSystems = createWorldSystems();
+  const population = createPopulationSimulation({ agentApi: AgentFive, worldSystems });
+  const [occupant] = population.spawn(1, { width: 300, ground: 180 });
+  occupant.x = 150;
+  occupant.y = 80;
+  occupant.floorY = 80;
+  occupant.grounded = true;
+  const floor = {
+    kind: "beam", broken: false, detached: false,
+    points: [{ x: 0, y: 80 }, { x: 300, y: 80 }]
+  };
+  const world = { width: 300, ground: 180, members: [floor], loads: [], materialProfiles: {} };
+
+  for (let i = 0; i < 120; i++) population.step(1 / 120, world);
+  assert.equal(occupant.grounded, true);
+  assert.ok(Math.abs(occupant.y - 80) < 0.01);
+
+  floor.broken = true;
+  for (let i = 0; i < 180; i++) population.step(1 / 120, world);
+  assert.equal(occupant.grounded, true);
+  assert.ok(Math.abs(occupant.y - 180) < 0.01);
+  assert.ok(occupant.y > 80);
+});
+
+
+test("occupants cancel a stair traversal when that connector collapses", () => {
+  const worldSystems = createWorldSystems();
+  const connector = worldSystems.addConnector(
+    "stairs", { x: 100, y: 80 }, { x: 100, y: 180 }
+  );
+  worldSystems.addExit({ x: 280, y: 180 });
+  const population = createPopulationSimulation({ agentApi: AgentFive, worldSystems });
+  const [occupant] = population.spawn(1, { width: 300, ground: 180 });
+  // Place the occupant on an upper floor so gravity is observable immediately
+  // after the connector disappears instead of landing on the ground this step.
+  occupant.x = 100;
+  occupant.y = 80;
+  occupant.floorY = 80;
+  occupant.grounded = true;
+  occupant.traversal = {
+    from: { x: 100, y: 80 },
+    to: { x: 100, y: 180 },
+    connectorId: connector.id,
+    kind: "stairs",
+    waitRemaining: 0
+  };
+  connector.falling = true;
+  population.step(1 / 120, {
+    width: 300, ground: 180, members: [], loads: [], materialProfiles: {}
+  });
+  assert.equal(occupant.traversal, null);
+  assert.equal(occupant.grounded, false);
+});
