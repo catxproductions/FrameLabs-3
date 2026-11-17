@@ -154,3 +154,30 @@ A panic value of 1.0 (100%) disables the occupant. The physics layer can also di
 **Training compatibility:** FL3 uses a fresh FL3-specific model because the meanings of its 16 inputs and four actions differ from Agent Five's original environment. The original project's protected trained model parameters are not copied. Each FL3 brain learns through its own PPO rollouts and experience; population descendants can inherit and mutate a parent brain using `createPopulation(size, { parent })`.
 
 **Current integration boundary:** the script is loaded by the browser preview and exposes `window.FrameLabs3AgentFive`. The native C++ executable does not yet call this JavaScript module, and the browser simulation does not yet create floor-based occupants or connect their actions to the structural solver. Those are subsequent integration tasks.
+
+
+## Structural destruction, effects, and building navigation
+
+The browser simulation loads `world-systems.js` before `app.js`. When a structural member fails or the Break tool is used, the original constraint member is detached from the structural solver and released as two independent rigid debris fragments. Fragments inherit their current translational and rotational motion, collide with the ground, other fragments, nearby standing members, and test loads, then settle into rubble. A bounded debris count prevents unbounded growth during long tests.
+
+Fractures emit localized dust and material-dependent sparks or splinters. The effects system also supports smoke and flame particles. Wood, explosive composite, and flammable composite have combustion properties; burning members heat up, weaken through the existing thermal material model, transfer heat to nearby members, and emit smoke. Explosive composite can trigger an in-game radial impulse once its ignition temperature is reached. Particles are visual approximations; structural temperatures, member failure, and detached debris are separate simulation state.
+
+### Navigation tools
+
+| Tool | Placement | Navigation behavior |
+|---|---|---|
+| Ladder | Click two floor landings | Adds a climb connection with a slower traversal cost |
+| Stairs | Click two floor landings | Adds a walkable inclined floor connection |
+| Elevator | Click two floor stops | Adds a lift connection with a small wait-cost |
+| Exit | Click a floor edge | Marks a safe destination |
+
+Navigation links and exits are saved in the build snapshot and restored by Reset Structure. Select Delete and click a connector or exit to remove it. The navigation graph connects same-floor points with walking edges and different-floor stops through ladders, stairs, or elevators. Its route planner selects a reachable exit using weighted path costs.
+
+### Agent Five navigation adapter
+
+The browser exposes `window.FrameLabs3Navigation`:
+
+- `findRouteToExit(x, y)` returns the nearest reachable exit, route cost, floor difference, direction, and route points.
+- `getOccupantPerception(x, y, extras)` creates the FL3 Agent Five perception object, including floor/exit distances, smoke density, fire intensity, and debris clearance.
+
+This provides the navigation and perception interface for the FL3 Agent Five occupant brain. This implementation adds the building connectors, exits, route graph, and perception adapter; it does **not** yet spawn or run an occupant population in the structural scene. The native C++ executable is also still a separate implementation and does not yet consume these browser JavaScript systems.
