@@ -68,3 +68,30 @@ test("upper-floor occupants traverse stairs and continue to a ground-floor exit"
   assert.equal(upperFloorOccupant.evacuated, true);
   assert.equal(upperFloorOccupant.floorY, 180);
 });
+
+test("untrained neural jump output cannot launch occupants without a validated jump gate", () => {
+  const worldSystems = createWorldSystems();
+  worldSystems.addExit({ x: 280, y: 180 });
+  const population = createPopulationSimulation({ agentApi: AgentFive, worldSystems });
+  const [occupant] = population.spawn(1, { width: 300, ground: 180 });
+  const world = { width: 300, ground: 180, members: [], loads: [], materialProfiles: {} };
+  population.step(1 / 120, world);
+  occupant.controls.jump = 1;
+  population.step(1 / 120, world);
+  assert.equal(occupant.grounded, true);
+  assert.equal(occupant.y, occupant.floorY);
+});
+
+test("jump output is accepted only when a host validates a jump opportunity", () => {
+  const worldSystems = createWorldSystems();
+  worldSystems.addExit({ x: 280, y: 180 });
+  const population = createPopulationSimulation({
+    agentApi: AgentFive, worldSystems, canJump: () => true
+  });
+  const [occupant] = population.spawn(1, { width: 300, ground: 180 });
+  const world = { width: 300, ground: 180, members: [], loads: [], materialProfiles: {} };
+  population.step(1 / 120, world);
+  occupant.controls.jump = 1;
+  population.step(1 / 120, world);
+  assert.equal(occupant.grounded, false);
+});
