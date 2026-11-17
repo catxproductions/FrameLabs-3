@@ -908,6 +908,9 @@
         button.disabled = (state.testMode && buildOnly.includes(button.dataset.tool)) ||
           (!state.testMode && testOnly.includes(button.dataset.tool));
       });
+      document.querySelectorAll("[data-build-mode]").forEach(button => {
+        button.disabled = state.testMode;
+      });
       const spawnButton = document.getElementById("spawnOccupants");
       const clearPopulationButton = document.getElementById("clearOccupants");
       if (spawnButton) spawnButton.disabled = !occupantSimulation || !state.testMode || worldSystems.getExitCount() === 0;
@@ -1076,11 +1079,22 @@
         const node=makeNode(point.x,onFloor?state.ground:point.y,false,onFloor);
         state.nodes.push(node);return node;
       };
+
+      // Retain the actual snapped support points as structural joints. The
+      // panel edge is projected level/plumb, so add physical short links when
+      // either aligned endpoint differs from its detected frame support.
+      const startSupport=nodeAt(draft.start);
+      const endSupport=nodeAt(draft.end);
       const a=nodeAt(geometry.a),b=nodeAt(geometry.b);
       const member=addMember(a,b,state.material,draft.kind);
       if(!member)return false;
+      if(startSupport!==a && distance(startSupport,a)>2)
+        addMember(startSupport,a,state.material,"beam");
+      if(endSupport!==b && distance(endSupport,b)>2)
+        addMember(endSupport,b,state.material,"beam");
+
       state.selectedNode=null;state.selectedLoad=null;state.selectedMember=member;
-      notify((draft.kind==="floor"?"Floor":"Wall")+" panel placed. Intersections join the frame when the test starts.");
+      notify((draft.kind==="floor"?"Floor":"Wall")+" panel placed and connected to its snapped frame supports.");
       updateInspector();draw();return true;
     }
     function updateBuildModeUI(){
@@ -2036,7 +2050,7 @@
       updateInspector();
       const status=document.querySelector(".view-status span:first-child");
       const modeLabel = !state.testMode
-        ? "BUILD MODE / SIMULATION NOT STARTED"
+        ? (state.buildMode === "floor" ? "FLOOR MODE / BUILDING PANELS" : "FRAME MODE / BUILDING STRUCTURE")
         : state.paused ? "TEST PAUSED / STRUCTURE LOCKED" : "TEST RUNNING / LIVE PHYSICS";
       if(status) status.innerHTML="<i></i> "+modeLabel+" &nbsp; / &nbsp; "+state.nodes.length+
         " NODES &nbsp; / &nbsp; "+worldSystems.getDebrisCount()+" DEBRIS";
