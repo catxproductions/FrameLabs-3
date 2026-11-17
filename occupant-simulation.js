@@ -67,6 +67,7 @@
           hasAction: false, pendingReward: 0, lastOutcome: "navigation",
           jumpCooldown: 0, grounded: true, evacuated: false,
           elapsed: 0, distanceTravelled: 0,
+          fallStartY: null,
           health: 100, injury: 0, lastDamageReason: null,
           recentImpactEnergy: 0, crushExposure: 0, crushLoadKg: 0,
           lastDebrisHits: Object.create(null),
@@ -403,6 +404,9 @@
       }
 
       const previousY = occupant.y;
+      if (!occupant.grounded && !Number.isFinite(occupant.fallStartY)) {
+        occupant.fallStartY = previousY;
+      }
       if (!occupant.grounded) occupant.vy += GRAVITY * dt;
       else occupant.vy = Math.max(0, occupant.vy);
 
@@ -410,15 +414,21 @@
       const supportY = findSupportSurface(occupant.x, previousY, nextY, world);
       if (supportY !== null && nextY >= previousY - 0.001) {
         if (!occupant.grounded) {
-          handleLandingImpact(occupant, occupant.vy, Math.max(0, supportY - previousY));
+          const fallStartY = Number.isFinite(occupant.fallStartY)
+            ? occupant.fallStartY : previousY;
+          handleLandingImpact(occupant, occupant.vy, Math.max(0, supportY - fallStartY));
         }
         occupant.y = supportY;
         occupant.floorY = supportY;
         occupant.vy = 0;
         occupant.grounded = true;
+        occupant.fallStartY = null;
       } else if (supportY !== null && occupant.grounded && nextY <= previousY) {
         occupant.y = supportY;
       } else {
+        if (occupant.grounded || !Number.isFinite(occupant.fallStartY)) {
+          occupant.fallStartY = previousY;
+        }
         occupant.y = nextY;
         occupant.grounded = false;
       }
