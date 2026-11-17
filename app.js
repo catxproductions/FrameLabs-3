@@ -965,6 +965,7 @@
         return;
       }
       const savedBuild = state.testSnapshot;
+      if (occupantSimulation) occupantSimulation.clear();
       restoreBuildSnapshot(savedBuild);
       state.testSnapshot = null;
       state.testMode = false;
@@ -1001,6 +1002,17 @@
       if (particleCount) particleCount.textContent = worldSystems.getParticleCount();
       if (connectorCount) connectorCount.textContent = worldSystems.getConnectorCount();
       if (exitCount) exitCount.textContent = worldSystems.getExitCount();
+      const occupantCount = document.getElementById("occupantCount");
+      const evacuatedCount = document.getElementById("evacuatedCount");
+      const populationStatus = document.getElementById("populationStatus");
+      const totalOccupants = occupantSimulation ? occupantSimulation.getCount() : 0;
+      const evacuatedOccupants = occupantSimulation ? occupantSimulation.getEvacuatedCount() : 0;
+      if (occupantCount) occupantCount.textContent = totalOccupants;
+      if (evacuatedCount) evacuatedCount.textContent = evacuatedOccupants;
+      if (populationStatus) populationStatus.textContent =
+        totalOccupants + " occupants · " + evacuatedOccupants + " evacuated" +
+        (occupantSimulation && occupantSimulation.getDisabledCount()
+          ? " · " + occupantSimulation.getDisabledCount() + " inactive" : "");
       const count = document.getElementById("structureCount");
       if (count) count.textContent = state.nodes.length + " nodes / " + state.members.length + " members";
       const summary = document.getElementById("selectionSummary");
