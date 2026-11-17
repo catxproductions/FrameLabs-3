@@ -95,3 +95,28 @@ test("jump output is accepted only when a host validates a jump opportunity", ()
   population.step(1 / 120, world);
   assert.equal(occupant.grounded, false);
 });
+
+test("gravity holds occupants on intact structural floors and drops them when the floor breaks", () => {
+  const worldSystems = createWorldSystems();
+  const population = createPopulationSimulation({ agentApi: AgentFive, worldSystems });
+  const [occupant] = population.spawn(1, { width: 300, ground: 180 });
+  occupant.x = 150;
+  occupant.y = 80;
+  occupant.floorY = 80;
+  occupant.grounded = true;
+  const floor = {
+    kind: "beam", broken: false, detached: false,
+    points: [{ x: 0, y: 80 }, { x: 300, y: 80 }]
+  };
+  const world = { width: 300, ground: 180, members: [floor], loads: [], materialProfiles: {} };
+
+  for (let i = 0; i < 120; i++) population.step(1 / 120, world);
+  assert.equal(occupant.grounded, true);
+  assert.ok(Math.abs(occupant.y - 80) < 0.01);
+
+  floor.broken = true;
+  for (let i = 0; i < 180; i++) population.step(1 / 120, world);
+  assert.equal(occupant.grounded, true);
+  assert.ok(Math.abs(occupant.y - 180) < 0.01);
+  assert.ok(occupant.y > 80);
+});
