@@ -1124,6 +1124,37 @@
         state.loads.push(makeLoad(place.x, place.y, 220));
         updateInspector(); draw(); return;
       }
+      if (state.tool === "ladder" || state.tool === "stairs" || state.tool === "elevator") {
+        const place = snappedPoint(p);
+        if (!state.firstNavPoint) {
+          state.firstNavPoint = { x: place.x, y: place.y };
+          notify("First landing marked. Click the connected floor landing.");
+        } else {
+          const link = worldSystems.addConnector(state.tool, state.firstNavPoint, place);
+          state.firstNavPoint = null;
+          notify(link
+            ? state.tool.charAt(0).toUpperCase() + state.tool.slice(1) + " connection added."
+            : "Those two landings are too close or invalid.");
+          updateInspector(); draw();
+        }
+        return;
+      }
+      if (state.tool === "exit") {
+        const exit = worldSystems.addExit(snappedPoint(p));
+        notify(exit ? "Safe exit added to the navigation graph." : "Could not place exit here.");
+        updateInspector(); draw(); return;
+      }
+      if (state.tool === "explode") {
+        if (!state.testMode) { notify("Start the structural test before applying an explosion."); return; }
+        triggerExplosion(p.x, p.y);
+        notify("Radial impulse applied. Overloaded members can fracture.");
+        updateInspector(); draw(); return;
+      }
+      if (state.tool === "ignite") {
+        if (!state.testMode) { notify("Start the structural test before igniting materials."); return; }
+        igniteAt(p.x, p.y);
+        updateInspector(); draw(); return;
+      }
       if (state.tool === "heat") { applyHeat(p.x, p.y, 20); return; }
       if (state.tool === "delete") {
         const node = closestNode(p.x, p.y);
@@ -1141,6 +1172,8 @@
         } else if (load) {
           state.loads = state.loads.filter(item => item !== load);
           notify("Test load deleted.");
+        } else if (worldSystems.removeNavigationAt(p.x, p.y)) {
+          notify("Navigation link or exit deleted.");
         } else {
           notify("Nothing to delete at that location.");
         }
@@ -1560,7 +1593,6 @@
           const bendGain = iterationGain(profile.bendStiffness * thermalStiffness, solverIterations);
           let releasedDuringSolve = false;
           for (let i = 1; i < member.points.length; i++) {
-            if (hasFracture && i - 1 === member.breakSegment) continue;
             const baseSegmentRest = member.segmentRests?.[i - 1] ?? member.segmentRest;
             const segmentRest = baseSegmentRest * effectiveRestScale;
             const segmentLength = distance(member.points[i - 1], member.points[i]);
@@ -1587,7 +1619,6 @@
           if (releasedDuringSolve) continue;
           if (member.kind !== "rope") {
             for (let i = 1; i + 1 < member.points.length; i++) {
-              if (hasFracture && (i === member.breakSegment || i === member.breakSegment + 1)) continue;
               solveConstraint(member.points[i - 1], member.points[i + 1],
                 member.segmentRest * 2 * effectiveRestScale, bendGain);
             }
@@ -1596,7 +1627,7 @@
           // not behave like a chain of freely hinged cloth particles. Project its
           // interior stations toward the endpoint chord with material compliance.
           // Steel yields slightly; wood flexes more; composite stays comparatively rigid.
-          if (!hasFracture && member.kind !== "rope") {
+          if (member.kind !== "rope") {
             const a = member.points[0], b = member.points[member.points.length - 1];
             const beamGain = bendGain;
             for (let i = 1; i < member.points.length - 1; i++) {
@@ -1700,7 +1731,9 @@
       ctx.strokeStyle="rgba(160,157,220,.34)";ctx.lineWidth=2;
       ctx.beginPath();ctx.moveTo(0,state.ground+1);ctx.lineTo(w,state.ground+1);ctx.stroke();
       ctx.restore();
+      worldSystems.drawNavigation(ctx);
       for (const member of state.members) {
+        if (member.detached) continue;
         const profile=materialProfiles[member.material];
         let color=profile.color;
         if (member.broken) color="#777184";
@@ -1736,8 +1769,9 @@
         };
         ctx.strokeStyle=color;ctx.lineWidth=member.kind==="rope"?2.8:6;ctx.lineCap="round";ctx.lineJoin="round";
         traceMember();
-        if (member.temperature>80 && !member.broken) {
-          ctx.strokeStyle="rgba(255,139,78,.28)";ctx.lineWidth=12;traceMember();
+        if ((member.temperature>80 || member.ignited) && !member.broken) {
+          ctx.strokeStyle=member.ignited?"rgba(255,112,57,.42)":"rgba(255,139,78,.28)";
+          ctx.lineWidth=member.ignited?15:12;traceMember();
         }
         if (member===state.selectedMember) {
           ctx.strokeStyle="#f0efff";ctx.lineWidth=2;ctx.setLineDash([5,4]);
@@ -1758,12 +1792,18 @@
       if(state.tool==="heat" && state.pointer) {
         ctx.strokeStyle="rgba(255,145,91,.5)";ctx.lineWidth=1;ctx.beginPath();ctx.arc(state.pointer.x,state.pointer.y,36,0,Math.PI*2);ctx.stroke();
       }
+      if (state.firstNavPoint) {
+        ctx.strokeStyle="#d2b784";ctx.lineWidth=2;ctx.setLineDash([4,4]);
+        ctx.beginPath();ctx.arc(state.firstNavPoint.x,state.firstNavPoint.y,9,0,Math.PI*2);ctx.stroke();ctx.setLineDash([]);
+      }
+      worldSystems.drawDebrisAndParticles(ctx);
       updateInspector();
       const status=document.querySelector(".view-status span:first-child");
       const modeLabel = !state.testMode
         ? "BUILD MODE / SIMULATION NOT STARTED"
         : state.paused ? "TEST PAUSED / STRUCTURE LOCKED" : "TEST RUNNING / LIVE PHYSICS";
-      if(status) status.innerHTML="<i></i> "+modeLabel+" &nbsp; / &nbsp; "+state.nodes.length+" NODES";
+      if(status) status.innerHTML="<i></i> "+modeLabel+" &nbsp; / &nbsp; "+state.nodes.length+
+        " NODES &nbsp; / &nbsp; "+worldSystems.getDebrisCount()+" DEBRIS";
     }
 
     function frame(time) {
@@ -1782,6 +1822,7 @@
         if (steps === 12) state.accumulator = 0;
       } else {
         state.accumulator = 0;
+        if (currentScreen === "workspace") worldSystems.updateParticles(frameDelta, { width: state.width, ground: state.ground });
       }
       draw();
       requestAnimationFrame(frame);
@@ -1797,8 +1838,10 @@
       if(event.key==="Escape" && currentScreen==="workspace"){showScreen("menu");return;}
       if(event.key==="Escape" && currentScreen==="settings"){showScreen(returnScreen);return;}
       if(currentScreen!=="workspace" || event.ctrlKey || event.metaKey || event.altKey) return;
-      const shortcuts={"1":"select","2":"node","3":"member","4":"load","5":"heat","6":"delete","7":"break","8":"explode","9":"ignite"};
-      if(shortcuts[event.key]) setTool(shortcuts[event.key]);
+      const shortcuts={"1":"select","2":"node","3":"member","4":"load","5":"heat","6":"delete","7":"break","8":"explode","9":"ignite",
+        "l":"ladder","s":"stairs","e":"elevator","x":"exit"};
+      const shortcut=shortcuts[event.key.toLowerCase()];
+      if(shortcut) setTool(shortcut);
       if(event.key.toLowerCase()==="t" && !/INPUT|SELECT|TEXTAREA/.test(event.target.tagName)) setTool("rope");
       if(event.key.toLowerCase()==="g" && !/INPUT|SELECT|TEXTAREA/.test(event.target.tagName)) {
         document.getElementById("gridSnapToggle").click();
