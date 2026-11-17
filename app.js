@@ -141,6 +141,12 @@
         <button class="tool" data-tool="heat" aria-pressed="false"><span>♨</span><b>Heat brush</b><kbd>5</kbd></button>
         <button class="tool" data-tool="delete" aria-pressed="false"><span>⌫</span><b>Delete</b><kbd>6</kbd></button>
         <button class="tool" data-tool="break" aria-pressed="false"><span>⚡</span><b>Break</b><kbd>7</kbd></button>
+        <button class="tool" data-tool="explode" aria-pressed="false"><span>✹</span><b>Explode</b><kbd>8</kbd></button>
+        <button class="tool" data-tool="ignite" aria-pressed="false"><span>♨</span><b>Ignite</b><kbd>9</kbd></button>
+        <button class="tool" data-tool="ladder" aria-pressed="false"><span>↕</span><b>Ladder</b><kbd>L</kbd></button>
+        <button class="tool" data-tool="stairs" aria-pressed="false"><span>⌁</span><b>Stairs</b><kbd>S</kbd></button>
+        <button class="tool" data-tool="elevator" aria-pressed="false"><span>⇵</span><b>Elevator</b><kbd>E</kbd></button>
+        <button class="tool" data-tool="exit" aria-pressed="false"><span>⇥</span><b>Exit</b><kbd>X</kbd></button>
       </div>
       <p class="browser-hint" id="toolHint">Build your structure first. Pin supports with right-click, then press Start Test.</p>
       <p class="browser-hint">WORLD SCALE · 1 GRID CELL = 5 ft² (2.236 ft × 2.236 ft)</p>
@@ -148,7 +154,8 @@
         <label for="materialSelect">MEMBER MATERIAL</label>
         <select id="materialSelect">
           <option value="steel">Steel</option><option value="wood">Wood</option>
-          <option value="composite">Composite</option><option value="concrete">Concrete</option>
+          <option value="composite">Composite</option><option value="explosiveComposite">Explosive composite</option>
+          <option value="flammableComposite">Flammable composite</option><option value="concrete">Concrete</option>
         </select>
       </div>
       <div class="browser-sim-actions">
@@ -157,6 +164,14 @@
         <button type="button" id="stressToggle" aria-pressed="true">Stress: On</button>
         <button type="button" id="gridSnapToggle" aria-pressed="false">Grid snap: Off</button>
         <button type="button" id="clearScene" class="clear-scene-action">Clear scene</button>
+      </div>
+      <div class="browser-population">
+        <label>OCCUPANT POPULATION</label>
+        <div class="browser-population-actions">
+          <button type="button" id="spawnOccupants" disabled>＋ Spawn 12</button>
+          <button type="button" id="clearOccupants" disabled>Clear</button>
+        </div>
+        <p id="populationStatus">0 occupants · Place an exit, then start a test to enable.</p>
       </div>`;
     const sceneSection = toolbar.querySelectorAll(".tool-section")[1];
     sceneSection.innerHTML = `
@@ -173,6 +188,9 @@
       <div class="property-list" id="selectionProperties">
         <div>NODES <b id="nodeCount">0</b></div><div>MEMBERS <b id="memberCount">0</b></div>
         <div>FAILED <b id="brokenCount">0</b></div><div>LOADS <b id="loadCount">0</b></div>
+        <div>DEBRIS <b id="debrisCount">0</b></div><div>PARTICLES <b id="particleCount">0</b></div>
+        <div>CONNECTORS <b id="connectorCount">0</b></div><div>EXITS <b id="exitCount">0</b></div>
+        <div>OCCUPANTS <b id="occupantCount">0</b></div><div>EVACUATED <b id="evacuatedCount">0</b></div>
       </div>`;
 
     const style = document.createElement("style");
@@ -192,7 +210,15 @@
       .browser-sim-actions button:disabled:hover,.browser-tool-grid .tool:disabled:hover{border-color:rgba(141,139,205,.17);color:#77758f}
       .browser-sim-actions .clear-scene-action{grid-column:1/-1;border-color:rgba(190,104,111,.38);color:#d59a9f}
       .browser-sim-actions .clear-scene-action:hover{border-color:#c87982;color:#ffe0e2}
-      .browser-tool-grid .tool{min-width:0}
+      .browser-population{display:grid;gap:7px;margin-top:14px;padding-top:11px;border-top:1px solid rgba(141,139,205,.14)}
+      .browser-population>label{color:#77758f;font-size:7px;font-weight:800;letter-spacing:.13em}
+      .browser-population-actions{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+      .browser-population-actions button{min-height:30px;border:1px solid rgba(141,139,205,.17);border-radius:2px;background:#0c0c14;color:#aaa8c7;font-size:8px}
+      .browser-population-actions button:hover{border-color:#7775c8;color:#fff}
+      .browser-population-actions button:disabled{opacity:.38;cursor:not-allowed}
+      #populationStatus{margin:0;color:#77758f;font-size:8px;line-height:1.5}
+      .browser-tool-grid .tool{min-width:0;min-height:36px}
+      .browser-tool-grid .tool b{font-size:9px}
       #selectionSummary{min-height:52px}
       .workspace-screen .grid-bg{background-size:24px 24px;background-position:0 0}
       @media(max-width:820px){.browser-sim-actions{grid-template-columns:repeat(2,minmax(0,1fr))}}
@@ -200,6 +226,20 @@
     document.head.appendChild(style);
 
     const ctx = canvas.getContext("2d");
+    if (!window.FrameLabs3WorldSystems) {
+      notify("World systems did not load. Refresh the FL3 preview.");
+      return;
+    }
+    const worldSystems = window.FrameLabs3WorldSystems.createWorldSystems();
+    window.FrameLabs3Navigation = Object.freeze({
+      findRouteToExit: (x, y) => worldSystems.findRouteToExit(x, y, state.ground),
+      getOccupantPerception: (x, y, extras = {}) =>
+        worldSystems.occupantPerception(x, y, extras, {
+          ground: state.ground, members: state.members
+        }),
+      addConnector: (kind, a, b) => worldSystems.addConnector(kind, a, b),
+      addExit: point => worldSystems.addExit(point)
+    });
     // One 24 px grid cell represents 5 square feet of plan area.
     // Physics is simulated in canvas pixels, with physical constants converted from SI.
     const GRID_CELL_PX = 24;
@@ -228,31 +268,61 @@
         stiffness: 0.985, bendStiffness: 0.985, heatSoftening: 0.72,
         heatWeakening: 0.92, thermalExpansion: 0.000018, tensileYield: 0.012, plasticRate: 0.6,
         staticFriction: 0.76, dynamicFriction: 0.49,
-        restitution: 0.12, elasticity: 0.58, fatigueSeconds: 2.5
+        restitution: 0.12, elasticity: 0.58, fatigueSeconds: 2.5,
+        flammability: 0.82, ignitionTemperature: 225, burnRate: 105
       },
       composite: {
         color: "#79c6c4", density: 1.25, bend: 0.23, strain: 0.03,
         stiffness: 0.998, bendStiffness: 0.994, heatSoftening: 0.42,
         heatWeakening: 0.86, thermalExpansion: 0.00001, tensileYield: 0.006, plasticRate: 0.6,
         staticFriction: 0.62, dynamicFriction: 0.38,
-        restitution: 0.10, elasticity: 0.32, fatigueSeconds: 3.2
+        restitution: 0.10, elasticity: 0.32, fatigueSeconds: 3.2,
+        flammability: 0, ignitionTemperature: 10000
       },
       concrete: {
         color: "#9c9eae", density: 2.35, bend: 0.20, strain: 0.025,
         stiffness: 0.999, bendStiffness: 0.997, heatSoftening: 0.35,
         heatWeakening: 0.90, thermalExpansion: 0.00001, tensileYield: 0.004, plasticRate: 0.4,
         staticFriction: 0.88, dynamicFriction: 0.64,
-        restitution: 0.08, elasticity: 0.25, fatigueSeconds: 2.0
+        restitution: 0.08, elasticity: 0.25, fatigueSeconds: 2.0,
+        flammability: 0, ignitionTemperature: 10000
+      },
+      explosiveComposite: {
+        color: "#d88d65", density: 1.35, bend: 0.20, strain: 0.028,
+        stiffness: 0.998, bendStiffness: 0.995, heatSoftening: 0.48,
+        heatWeakening: 0.92, thermalExpansion: 0.00001, tensileYield: 0.006, plasticRate: 0.45,
+        staticFriction: 0.60, dynamicFriction: 0.36,
+        restitution: 0.12, elasticity: 0.35, fatigueSeconds: 2.5,
+        flammability: 0.65, ignitionTemperature: 270, burnRate: 180, explosive: true
+      },
+      flammableComposite: {
+        color: "#cc9857", density: 1.20, bend: 0.22, strain: 0.03,
+        stiffness: 0.997, bendStiffness: 0.993, heatSoftening: 0.58,
+        heatWeakening: 0.95, thermalExpansion: 0.000012, tensileYield: 0.006, plasticRate: 0.5,
+        staticFriction: 0.63, dynamicFriction: 0.39,
+        restitution: 0.10, elasticity: 0.30, fatigueSeconds: 2.6,
+        flammability: 1, ignitionTemperature: 150, burnRate: 145
       }
     };
     const state = {
       nodes: [], members: [], loads: [], nextNode: 1, nextMember: 1,
       tool: "select", material: "steel", firstNode: null, selectedNode: null,
       selectedMember: null, selectedLoad: null, dragging: null, paused: true,
-      testMode: false, testSnapshot: null,
+      firstNavPoint: null, testMode: false, testSnapshot: null,
       stress: true, gridSnap: false, gridSize: GRID_CELL_PX,
       lastTime: 0, accumulator: 0, width: 0, height: 0, ground: 0
     };
+    const occupantSimulation = window.FrameLabs3OccupantSimulation && window.FrameLabs3AgentFive
+      ? window.FrameLabs3OccupantSimulation.createPopulationSimulation({
+          agentApi: window.FrameLabs3AgentFive, worldSystems
+        }) : null;
+    if (occupantSimulation) {
+      window.FrameLabs3Population = Object.freeze({
+        spawn: count => occupantSimulation.spawn(count, { width: state.width, ground: state.ground }),
+        clear: () => occupantSimulation.clear(),
+        getOccupants: () => occupantSimulation.getOccupants()
+      });
+    }
 
     const distance = (a, b) => Math.hypot(b.x - a.x, b.y - a.y);
     const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
@@ -281,6 +351,7 @@
         node.mass = node.baseMass || 0.5;
       }
       for (const member of state.members) {
+        if (member.broken || member.detached) continue;
         const endpointMass = Math.max(0, member.memberMass || 0) / 10;
         member.a.mass += endpointMass;
         member.b.mass += endpointMass;
@@ -331,7 +402,9 @@
       state.members.push({
         id: state.nextMember++, a, b, points, material, kind,
         rest, segmentRest: rest / 5, segmentRests,
-        broken: false, stress: 0, damage: 0, fatigue: 0, temperature: 20,
+        broken: false, detached: false, fractureProcessed: false,
+        ignited: false, exploded: false, fireTimer: 0, smokeTimer: 0,
+        stress: 0, damage: 0, fatigue: 0, temperature: 20,
         plasticStrain: 0, peakTensileStrain: 0, memberMass
       });
       return state.members[state.members.length - 1];
@@ -590,6 +663,7 @@
       const oldW = state.width || rect.width, oldH = state.height || rect.height;
       const sx = rect.width / oldW, sy = rect.height / oldH;
       if (state.width) {
+        worldSystems.scaleWorld(sx, sy);
         [...state.nodes, ...state.members.flatMap(m => m.points.slice(1, -1)), ...state.loads].forEach(p => {
           p.x *= sx; p.px *= sx; p.y *= sy; p.py *= sy;
         });
@@ -680,6 +754,9 @@
       state.selectedLoad = null;
       state.dragging = null;
       state.testSnapshot = null;
+      worldSystems.clearAll();
+      if (occupantSimulation) occupantSimulation.clear();
+      state.firstNavPoint = null;
       state.testMode = false;
       state.paused = true;
       state.accumulator = 0;
@@ -718,9 +795,13 @@
           temperature: member.temperature,
           plasticStrain: member.plasticStrain || 0,
           peakTensileStrain: member.peakTensileStrain || 0,
+          ignited: !!member.ignited, exploded: !!member.exploded,
+          fireTimer: member.fireTimer || 0, smokeTimer: member.smokeTimer || 0,
+          detached: !!member.detached, fractureProcessed: !!member.fractureProcessed,
           interior: member.points.slice(1, -1).map(point => ({ ...point }))
         })),
-        loads: state.loads.map(load => ({ ...load }))
+        loads: state.loads.map(load => ({ ...load })),
+        navigation: worldSystems.captureNavigation()
       };
     }
 
@@ -741,6 +822,8 @@
         };
       });
       state.loads = snapshot.loads.map(load => ({ ...load }));
+      worldSystems.clearDynamic();
+      worldSystems.restoreNavigation(snapshot.navigation);
       state.nextNode = snapshot.nextNode;
       state.nextMember = snapshot.nextMember;
       state.firstNode = null;
@@ -770,9 +853,16 @@
       if (clearButton) clearButton.disabled = state.testMode;
       if (materialSelect) materialSelect.disabled = state.testMode;
       document.querySelectorAll("[data-tool]").forEach(button => {
-        button.disabled = state.testMode &&
-          ["node", "member", "rope", "load", "delete"].includes(button.dataset.tool);
+        const buildOnly = ["node", "member", "rope", "load", "delete", "ladder", "stairs", "elevator", "exit"];
+        const testOnly = ["break", "explode", "ignite"];
+        button.disabled = (state.testMode && buildOnly.includes(button.dataset.tool)) ||
+          (!state.testMode && testOnly.includes(button.dataset.tool));
       });
+      const spawnButton = document.getElementById("spawnOccupants");
+      const clearPopulationButton = document.getElementById("clearOccupants");
+      if (spawnButton) spawnButton.disabled = !occupantSimulation || !state.testMode || worldSystems.getExitCount() === 0;
+      if (clearPopulationButton) clearPopulationButton.disabled =
+        !occupantSimulation || occupantSimulation.getCount() === 0;
     }
 
     // Rebuild each intact member's hidden simulation stations from its current
@@ -797,7 +887,7 @@
       }
 
       for (const member of state.members) {
-        if (member.broken || !member.a || !member.b) {
+        if (member.broken || member.detached || !member.a || !member.b) {
           for (const point of member.points || []) {
             point.px = point.x;
             point.py = point.y;
@@ -875,6 +965,7 @@
         return;
       }
       const savedBuild = state.testSnapshot;
+      if (occupantSimulation) occupantSimulation.clear();
       restoreBuildSnapshot(savedBuild);
       state.testSnapshot = null;
       state.testMode = false;
@@ -903,6 +994,25 @@
       if (memberCount) memberCount.textContent = state.members.length;
       if (brokenCount) brokenCount.textContent = state.members.filter(m => m.broken).length;
       if (loadCount) loadCount.textContent = state.loads.length;
+      const debrisCount = document.getElementById("debrisCount");
+      const particleCount = document.getElementById("particleCount");
+      const connectorCount = document.getElementById("connectorCount");
+      const exitCount = document.getElementById("exitCount");
+      if (debrisCount) debrisCount.textContent = worldSystems.getDebrisCount();
+      if (particleCount) particleCount.textContent = worldSystems.getParticleCount();
+      if (connectorCount) connectorCount.textContent = worldSystems.getConnectorCount();
+      if (exitCount) exitCount.textContent = worldSystems.getExitCount();
+      const occupantCount = document.getElementById("occupantCount");
+      const evacuatedCount = document.getElementById("evacuatedCount");
+      const populationStatus = document.getElementById("populationStatus");
+      const totalOccupants = occupantSimulation ? occupantSimulation.getCount() : 0;
+      const evacuatedOccupants = occupantSimulation ? occupantSimulation.getEvacuatedCount() : 0;
+      if (occupantCount) occupantCount.textContent = totalOccupants;
+      if (evacuatedCount) evacuatedCount.textContent = evacuatedOccupants;
+      if (populationStatus) populationStatus.textContent =
+        totalOccupants + " occupants · " + evacuatedOccupants + " evacuated" +
+        (occupantSimulation && occupantSimulation.getDisabledCount()
+          ? " · " + occupantSimulation.getDisabledCount() + " inactive" : "");
       const count = document.getElementById("structureCount");
       if (count) count.textContent = state.nodes.length + " nodes / " + state.members.length + " members";
       const summary = document.getElementById("selectionSummary");
@@ -921,7 +1031,7 @@
     }
 
     function setTool(tool) {
-      state.tool = tool; state.firstNode = null;
+      state.tool = tool; state.firstNode = null; state.firstNavPoint = null;
       document.querySelectorAll("[data-tool]").forEach(button => {
         const active = button.dataset.tool === tool;
         button.classList.toggle("selected", active);
@@ -935,7 +1045,13 @@
         load: "Click in the scene to drop a 220 kg test load.",
         heat: "Heat softens members and expands steel. Tension can permanently stretch or snap an overloaded member.",
         delete: "Click a node, member, or test load to remove it. Deleting a node also removes its connected members.",
-        break: "Click a member to fracture it. The two separated pieces remain in the simulation."
+        break: "Click a member to split it into independent fragments that fall, collide and settle.",
+        explode: "Click to apply a radial impulse, damage nearby members and emit dust and sparks.",
+        ignite: "Click wood or flammable composite to start fire, heat transfer and smoke.",
+        ladder: "Click the first floor landing, then the second landing to add a climbable ladder.",
+        stairs: "Click two floor landings to create a traversable stair connection.",
+        elevator: "Click two floor stops to create a lift shaft and connected stops.",
+        exit: "Click a floor edge to mark a safe exit for evacuation routing."
       };
       document.getElementById("toolHint").textContent = hints[tool];
       canvas.style.cursor = tool === "select" ? "default" : tool === "heat" ? "cell" : "crosshair";
@@ -947,6 +1063,24 @@
     document.getElementById("materialSelect").addEventListener("change", event => {
       state.material = event.target.value;
       notify("New members will use " + state.material + ".");
+    });
+    document.getElementById("spawnOccupants").addEventListener("click", () => {
+      if (!occupantSimulation || !state.testMode) {
+        notify("Start a structural test before spawning occupants.");
+        return;
+      }
+      if (!worldSystems.getExitCount()) {
+        notify("Place at least one exit before spawning occupants.");
+        return;
+      }
+      const added = occupantSimulation.spawn(12, { width: state.width, ground: state.ground });
+      notify(added.length + " occupants added. Their Agent Five brains are now active.");
+      updateSimulationControls(); updateInspector(); draw();
+    });
+    document.getElementById("clearOccupants").addEventListener("click", () => {
+      if (occupantSimulation) occupantSimulation.clear();
+      updateSimulationControls(); updateInspector(); draw();
+      notify("Occupant population cleared.");
     });
     document.getElementById("startTestSimulation").addEventListener("click", toggleTestSimulation);
     document.getElementById("resetStructure").addEventListener("click", resetStructure);
@@ -996,6 +1130,8 @@
       member.broken = true;
       member.breakSegment = closestSegment;
       member.stress = Math.max(member.stress, 1.15);
+      worldSystems.fractureMember(member, closestSegment, 1 / 120);
+      recalculateNodeMasses();
       state.selectedNode = null;
       state.selectedLoad = null;
       state.selectedMember = member;
@@ -1012,8 +1148,12 @@
       if (node) { if (node.baseNode) { notify("Floor base nodes stay glued to the ground."); return; } node.pinned = !node.pinned; refreshNodeInverseMass(node); node.px = node.x; node.py = node.y; updateInspector(); draw(); }
     });
     canvas.addEventListener("pointerdown", event => {
-      if (state.testMode && ["node", "member", "rope", "load", "delete"].includes(state.tool)) {
+      if (state.testMode && ["node", "member", "rope", "load", "delete", "ladder", "stairs", "elevator", "exit"].includes(state.tool)) {
         notify("The structure is locked during a test. Reset Structure to edit your build.");
+        return;
+      }
+      if (!state.testMode && ["break", "explode", "ignite"].includes(state.tool)) {
+        notify("Start the structural test before using destruction or ignition tools.");
         return;
       }
       const rawPoint = pointerPosition(event);
@@ -1053,6 +1193,37 @@
         state.loads.push(makeLoad(place.x, place.y, 220));
         updateInspector(); draw(); return;
       }
+      if (state.tool === "ladder" || state.tool === "stairs" || state.tool === "elevator") {
+        const place = snappedPoint(p);
+        if (!state.firstNavPoint) {
+          state.firstNavPoint = { x: place.x, y: place.y };
+          notify("First landing marked. Click the connected floor landing.");
+        } else {
+          const link = worldSystems.addConnector(state.tool, state.firstNavPoint, place);
+          state.firstNavPoint = null;
+          notify(link
+            ? state.tool.charAt(0).toUpperCase() + state.tool.slice(1) + " connection added."
+            : "Those two landings are too close or invalid.");
+          updateInspector(); draw();
+        }
+        return;
+      }
+      if (state.tool === "exit") {
+        const exit = worldSystems.addExit(snappedPoint(p));
+        notify(exit ? "Safe exit added to the navigation graph." : "Could not place exit here.");
+        updateInspector(); draw(); return;
+      }
+      if (state.tool === "explode") {
+        if (!state.testMode) { notify("Start the structural test before applying an explosion."); return; }
+        triggerExplosion(p.x, p.y);
+        notify("Radial impulse applied. Overloaded members can fracture.");
+        updateInspector(); draw(); return;
+      }
+      if (state.tool === "ignite") {
+        if (!state.testMode) { notify("Start the structural test before igniting materials."); return; }
+        igniteAt(p.x, p.y);
+        updateInspector(); draw(); return;
+      }
       if (state.tool === "heat") { applyHeat(p.x, p.y, 20); return; }
       if (state.tool === "delete") {
         const node = closestNode(p.x, p.y);
@@ -1070,6 +1241,8 @@
         } else if (load) {
           state.loads = state.loads.filter(item => item !== load);
           notify("Test load deleted.");
+        } else if (worldSystems.removeNavigationAt(p.x, p.y)) {
+          notify("Navigation link or exit deleted.");
         } else {
           notify("Nothing to delete at that location.");
         }
@@ -1122,7 +1295,19 @@
           const t = clamp(((x-a.x)*dx+(y-a.y)*dy)/Math.max(1,dx*dx+dy*dy),0,1);
           nearest = Math.min(nearest, Math.hypot(x-a.x-dx*t,y-a.y-dy*t));
         }
-        if (nearest < 36) member.temperature = Math.min(1000, member.temperature + amount * (1-nearest/36));
+        if (nearest < 36) {
+          member.temperature = Math.min(1100, member.temperature + amount * (1-nearest/36));
+          const profile = materialProfiles[member.material] || {};
+          if (profile.flammability > 0 && member.temperature >= (profile.ignitionTemperature || 240)) {
+            member.ignited = true;
+          }
+          if ((profile.explosive || profile.flammability > 0) &&
+              member.temperature >= (profile.ignitionTemperature || 270)) {
+            member.ignited = true;
+            member.fireTimer = 0;
+            member.smokeTimer = 0;
+          }
+        }
       }
       draw();
     }
@@ -1200,7 +1385,7 @@
     }
 
     function solveLoadMemberContact(load, member, dt, solveVelocity) {
-      if (member.broken) return;
+      if (member.broken || member.detached) return;
       const profile = materialProfiles[member.material];
       for (let i = 1; i < member.points.length; i++) {
         const a = member.points[i - 1], b = member.points[i];
@@ -1297,8 +1482,10 @@
     function solveMemberMemberContacts() {
       for(let i=0;i<state.members.length;i++) {
         const first=state.members[i];
+        if (first.broken || first.detached) continue;
         for(let j=i+1;j<state.members.length;j++) {
           const second=state.members[j];
+          if (second.broken || second.detached) continue;
           if(first.a===second.a||first.a===second.b||first.b===second.a||first.b===second.b)continue;
           for(let a=1;a<first.points.length;a++)
             for(let b=1;b<second.points.length;b++)
@@ -1326,14 +1513,100 @@
       }
     }
 
+
+    function nearestBreakSegment(member, x, y) {
+      let closest = 0, best = Infinity;
+      for (let i = 1; i < member.points.length; i++) {
+        const a = member.points[i - 1], b = member.points[i];
+        const dx = b.x - a.x, dy = b.y - a.y;
+        const t = clamp(((x - a.x) * dx + (y - a.y) * dy) / Math.max(1, dx * dx + dy * dy), 0, 1);
+        const d = Math.hypot(x - a.x - dx * t, y - a.y - dy * t);
+        if (d < best) { best = d; closest = i - 1; }
+      }
+      return closest;
+    }
+
+    function triggerExplosion(x, y, radius = 150, strength = 950) {
+      worldSystems.emitExplosion(x, y, radius, 1);
+      const dt = 1 / 120;
+      const applyRadialImpulse = point => {
+        const dx = point.x - x, dy = point.y - y;
+        const d = Math.hypot(dx, dy);
+        if (d >= radius || !point.inverseMass) return;
+        const falloff = Math.pow(1 - d / radius, 1.35);
+        const nx = d > 0.001 ? dx / d : 0;
+        const ny = d > 0.001 ? dy / d : -1;
+        applyImpulse(point, nx * strength * falloff, ny * strength * falloff, dt);
+      };
+      for (const node of state.nodes) applyRadialImpulse(node);
+      for (const load of state.loads) applyRadialImpulse(load);
+      for (const member of state.members) {
+        if (member.broken || member.detached) continue;
+        let nearest = Infinity, breakSegment = 0;
+        for (let i = 1; i < member.points.length; i++) {
+          const a = member.points[i - 1], b = member.points[i];
+          const dx = b.x - a.x, dy = b.y - a.y;
+          const t = clamp(((x - a.x) * dx + (y - a.y) * dy) / Math.max(1, dx * dx + dy * dy), 0, 1);
+          const d = Math.hypot(x - a.x - dx * t, y - a.y - dy * t);
+          if (d < nearest) { nearest = d; breakSegment = i - 1; }
+        }
+        if (nearest >= radius) continue;
+        const falloff = Math.pow(1 - nearest / radius, 1.2);
+        for (let i = 1; i < member.points.length - 1; i++) applyRadialImpulse(member.points[i]);
+        member.damage = clamp(member.damage + falloff * 0.82, 0, 0.99);
+        if (falloff > 0.62 || member.damage > 0.88) {
+          member.broken = true;
+          member.breakSegment = breakSegment;
+          worldSystems.fractureMember(member, breakSegment, dt);
+        }
+      }
+      recalculateNodeMasses();
+    }
+
+    function igniteAt(x, y) {
+      const member = closestMember(x, y, 32);
+      if (!member) { notify("Aim at a combustible member to ignite it."); return false; }
+      const profile = materialProfiles[member.material] || {};
+      if (!(profile.flammability > 0)) {
+        notify("This material is not combustible. Try wood or flammable composite.");
+        return false;
+      }
+      member.ignited = true;
+      member.temperature = Math.max(member.temperature || 20, profile.ignitionTemperature || 240);
+      member.fireTimer = 0;
+      member.smokeTimer = 0;
+      const center = member.points.reduce((sum, point) => ({
+        x: sum.x + point.x / member.points.length,
+        y: sum.y + point.y / member.points.length
+      }), { x: 0, y: 0 });
+      worldSystems.emitFlame(center.x, center.y, 8);
+      worldSystems.emitSmoke(center.x, center.y, 6);
+      notify(member.material === "explosiveComposite"
+        ? "Explosive composite ignited. Keep the simulation running to observe its thermal response."
+        : "Member ignited. Fire will transfer heat and produce smoke.");
+      return true;
+    }
+
     function iterationGain(targetStiffness, iterations) {
       const target = clamp(targetStiffness, 0, 0.9999);
       return 1 - Math.pow(1 - target, 1 / Math.max(1, iterations));
     }
 
     function physicsStep(dt) {
+      const fireEvents = worldSystems.step(dt, {
+        ground: state.ground, width: state.width, members: state.members,
+        loads: state.loads, materialProfiles
+      });
+      for (const event of fireEvents) triggerExplosion(event.x, event.y, 132, 880);
+      if (occupantSimulation && state.testMode) {
+        occupantSimulation.step(dt, {
+          ground: state.ground, width: state.width, members: state.members,
+          loads: state.loads, materialProfiles
+        });
+      }
       for (const node of state.nodes) integrateParticle(node, dt, materialProfiles.concrete);
       for (const member of state.members) {
+        if (member.broken || member.detached) continue;
         const profile = materialProfiles[member.material];
         for (let i = 1; i < member.points.length - 1; i++) {
           integrateParticle(member.points[i], dt, profile);
@@ -1359,26 +1632,33 @@
         const thermalScale = 1 + (profile.thermalExpansion || 0) * Math.max(0, member.temperature - 20);
         const effectiveRestScale = thermalScale * (1 + (member.plasticStrain || 0));
         let maximumStrain = 0;
+        let maximumStrainSegment = 0;
 
         for (let i = 1; i < member.points.length; i++) {
           const baseSegmentRest = member.segmentRests?.[i - 1] ?? member.segmentRest;
           const segmentRest = baseSegmentRest * effectiveRestScale;
           const segmentLength = distance(member.points[i - 1], member.points[i]);
           const tensileStrain = Math.max(0, (segmentLength - segmentRest) / Math.max(0.5, segmentRest));
-          maximumStrain = Math.max(maximumStrain, tensileStrain);
+          if (tensileStrain > maximumStrain) {
+            maximumStrain = tensileStrain;
+            maximumStrainSegment = i - 1;
+          }
         }
 
         member.peakTensileStrain = maximumStrain;
         // Automatic failure releases the member as a whole, matching the
         // existing post-solver fracture path. Do not leave the remaining links
         // actively pulling after one segment has already exceeded capacity.
-        if (maximumStrain > tensileCapacity) member.broken = true;
+        if (maximumStrain > tensileCapacity) {
+          member.broken = true;
+          member.breakSegment = maximumStrainSegment;
+          worldSystems.fractureMember(member, maximumStrainSegment, dt);
+        }
       }
 
       for (let iteration = 0; iteration < solverIterations; iteration++) {
         for (const member of state.members) {
-          const hasFracture = member.broken && Number.isInteger(member.breakSegment);
-          if (member.broken && !hasFracture) continue;
+          if (member.broken || member.detached) continue;
           const profile = materialProfiles[member.material];
           const heat = clamp((member.temperature - 20) / 850, 0, 1);
           const thermalStiffness = 1 - profile.heatSoftening * heat;
@@ -1391,7 +1671,6 @@
           const bendGain = iterationGain(profile.bendStiffness * thermalStiffness, solverIterations);
           let releasedDuringSolve = false;
           for (let i = 1; i < member.points.length; i++) {
-            if (hasFracture && i - 1 === member.breakSegment) continue;
             const baseSegmentRest = member.segmentRests?.[i - 1] ?? member.segmentRest;
             const segmentRest = baseSegmentRest * effectiveRestScale;
             const segmentLength = distance(member.points[i - 1], member.points[i]);
@@ -1403,6 +1682,8 @@
             // connected structure before the normal end-of-step failure check.
             if (!member.broken && tensileStrain > tensileCapacity) {
               member.broken = true;
+              member.breakSegment = i - 1;
+              worldSystems.fractureMember(member, i - 1, dt);
               releasedDuringSolve = true;
               break;
             }
@@ -1416,7 +1697,6 @@
           if (releasedDuringSolve) continue;
           if (member.kind !== "rope") {
             for (let i = 1; i + 1 < member.points.length; i++) {
-              if (hasFracture && (i === member.breakSegment || i === member.breakSegment + 1)) continue;
               solveConstraint(member.points[i - 1], member.points[i + 1],
                 member.segmentRest * 2 * effectiveRestScale, bendGain);
             }
@@ -1425,7 +1705,7 @@
           // not behave like a chain of freely hinged cloth particles. Project its
           // interior stations toward the endpoint chord with material compliance.
           // Steel yields slightly; wood flexes more; composite stays comparatively rigid.
-          if (!hasFracture && member.kind !== "rope") {
+          if (member.kind !== "rope") {
             const a = member.points[0], b = member.points[member.points.length - 1];
             const beamGain = bendGain;
             for (let i = 1; i < member.points.length - 1; i++) {
@@ -1455,7 +1735,7 @@
       solveMemberMemberContacts();
 
       for (const member of state.members) {
-        if (member.broken) continue;
+        if (member.broken || member.detached) continue;
         const profile = materialProfiles[member.material];
         let currentLength = 0, maxAngle = 0;
         for (let i = 1; i < member.points.length; i++) {
@@ -1500,9 +1780,24 @@
         if (member.stress > 0.62) member.fatigue += dt * (member.stress - 0.58) * 0.75;
         else member.fatigue = Math.max(0, member.fatigue - dt * 0.08);
         member.damage = clamp(member.damage + Math.max(0, member.stress - 0.78) * dt * 0.24, 0, 0.99);
-        if (member.stress > 1.0 || member.fatigue > fatigueLimit) member.broken = true;
+        if (member.stress > 1.0 || member.fatigue > fatigueLimit) {
+          member.broken = true;
+          member.breakSegment = nearestBreakSegment(member,
+            (member.points[0].x + member.points[member.points.length - 1].x) * 0.5,
+            (member.points[0].y + member.points[member.points.length - 1].y) * 0.5);
+        }
         member.temperature = Math.max(20, member.temperature - dt * 1.5);
       }
+      for (const member of state.members) {
+        if (member.broken && !member.detached && !member.fractureProcessed) {
+          const fallbackSegment = Number.isInteger(member.breakSegment) ? member.breakSegment :
+            nearestBreakSegment(member,
+              (member.points[0].x + member.points[member.points.length - 1].x) * 0.5,
+              (member.points[0].y + member.points[member.points.length - 1].y) * 0.5);
+          worldSystems.fractureMember(member, fallbackSegment, dt);
+        }
+      }
+      recalculateNodeMasses();
     }
 
     function draw() {
@@ -1514,7 +1809,9 @@
       ctx.strokeStyle="rgba(160,157,220,.34)";ctx.lineWidth=2;
       ctx.beginPath();ctx.moveTo(0,state.ground+1);ctx.lineTo(w,state.ground+1);ctx.stroke();
       ctx.restore();
+      worldSystems.drawNavigation(ctx);
       for (const member of state.members) {
+        if (member.detached) continue;
         const profile=materialProfiles[member.material];
         let color=profile.color;
         if (member.broken) color="#777184";
@@ -1550,8 +1847,9 @@
         };
         ctx.strokeStyle=color;ctx.lineWidth=member.kind==="rope"?2.8:6;ctx.lineCap="round";ctx.lineJoin="round";
         traceMember();
-        if (member.temperature>80 && !member.broken) {
-          ctx.strokeStyle="rgba(255,139,78,.28)";ctx.lineWidth=12;traceMember();
+        if ((member.temperature>80 || member.ignited) && !member.broken) {
+          ctx.strokeStyle=member.ignited?"rgba(255,112,57,.42)":"rgba(255,139,78,.28)";
+          ctx.lineWidth=member.ignited?15:12;traceMember();
         }
         if (member===state.selectedMember) {
           ctx.strokeStyle="#f0efff";ctx.lineWidth=2;ctx.setLineDash([5,4]);
@@ -1572,12 +1870,19 @@
       if(state.tool==="heat" && state.pointer) {
         ctx.strokeStyle="rgba(255,145,91,.5)";ctx.lineWidth=1;ctx.beginPath();ctx.arc(state.pointer.x,state.pointer.y,36,0,Math.PI*2);ctx.stroke();
       }
+      if (state.firstNavPoint) {
+        ctx.strokeStyle="#d2b784";ctx.lineWidth=2;ctx.setLineDash([4,4]);
+        ctx.beginPath();ctx.arc(state.firstNavPoint.x,state.firstNavPoint.y,9,0,Math.PI*2);ctx.stroke();ctx.setLineDash([]);
+      }
+      worldSystems.drawDebrisAndParticles(ctx);
+      if (occupantSimulation) occupantSimulation.draw(ctx);
       updateInspector();
       const status=document.querySelector(".view-status span:first-child");
       const modeLabel = !state.testMode
         ? "BUILD MODE / SIMULATION NOT STARTED"
         : state.paused ? "TEST PAUSED / STRUCTURE LOCKED" : "TEST RUNNING / LIVE PHYSICS";
-      if(status) status.innerHTML="<i></i> "+modeLabel+" &nbsp; / &nbsp; "+state.nodes.length+" NODES";
+      if(status) status.innerHTML="<i></i> "+modeLabel+" &nbsp; / &nbsp; "+state.nodes.length+
+        " NODES &nbsp; / &nbsp; "+worldSystems.getDebrisCount()+" DEBRIS";
     }
 
     function frame(time) {
@@ -1596,6 +1901,11 @@
         if (steps === 12) state.accumulator = 0;
       } else {
         state.accumulator = 0;
+        // Visual particles continue in build mode, but a paused test freezes
+        // its particles along with the rest of the simulation.
+        if (!state.testMode && currentScreen === "workspace") {
+          worldSystems.updateParticles(frameDelta, { width: state.width, ground: state.ground });
+        }
       }
       draw();
       requestAnimationFrame(frame);
@@ -1611,8 +1921,10 @@
       if(event.key==="Escape" && currentScreen==="workspace"){showScreen("menu");return;}
       if(event.key==="Escape" && currentScreen==="settings"){showScreen(returnScreen);return;}
       if(currentScreen!=="workspace" || event.ctrlKey || event.metaKey || event.altKey) return;
-      const shortcuts={"1":"select","2":"node","3":"member","4":"load","5":"heat","6":"delete","7":"break","8":"explode","9":"ignite"};
-      if(shortcuts[event.key]) setTool(shortcuts[event.key]);
+      const shortcuts={"1":"select","2":"node","3":"member","4":"load","5":"heat","6":"delete","7":"break","8":"explode","9":"ignite",
+        "l":"ladder","s":"stairs","e":"elevator","x":"exit"};
+      const shortcut=shortcuts[event.key.toLowerCase()];
+      if(shortcut) setTool(shortcut);
       if(event.key.toLowerCase()==="t" && !/INPUT|SELECT|TEXTAREA/.test(event.target.tagName)) setTool("rope");
       if(event.key.toLowerCase()==="g" && !/INPUT|SELECT|TEXTAREA/.test(event.target.tagName)) {
         document.getElementById("gridSnapToggle").click();

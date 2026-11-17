@@ -85,3 +85,101 @@ Planned engine milestones include:
 6. Performance profiling and safe parallelization of independent simulation work.
 
 The FL2 codebase is used as a design reference for material distinctions, heat weakening, structural failure, and game feel. FL3's engine is being built as a separate native 2D implementation rather than porting FL2's browser runtime wholesale.
+
+
+## Agent Five occupant intelligence (FL3 adaptation)
+
+FL3 includes an FL3-owned adaptation of the Agent Five neural architecture in `agent-five-fl3.js`. It preserves Agent Five v8's 16-input, 26-hidden-layer fully connected tanh topology, separate value critic, PPO-style policy optimization with generalized advantage estimation, and prioritized/episodic experience memory. The FL3 actor head has four outputs instead of Agent Five's original three.
+
+### Perception inputs (in fixed order)
+
+1. Distance from floor
+2. Current floor
+3. Distance from wall
+4. Temperature
+5. Falling speed
+6. Distance from falling object
+7. Panic
+8. Horizontal speed
+9. Distance from exit
+10. Exit direction
+11. Floor difference to exit
+12. Smoke density
+13. Fire intensity
+14. Structural danger
+15. Nearby occupant density
+16. Debris clearance
+
+Object observations are normalized to [-1, 1]. Sensor scales can be overridden per observation using its `scale` object. Distance sensors encode close as -1 and far as +1; hazard intensity encodes none as -1 and maximum as +1.
+
+### Actor outputs
+
+- `thrustLeft`: independent left thrust, 0–1.
+- `thrustRight`: independent right thrust, 0–1.
+- `brake`: braking / friction control, 0–1.
+- `jump`: jump request, 0–1. FL3 should trigger a jump only when the value is at least 0.5, the occupant is grounded, and its jump cooldown is ready.
+
+The network returns decisions; the FL3 physics/navigation layer must apply those controls and build each occupant's sensor observation. The neural module does not invent floor geometry, exits, collision forces, smoke transport, or agent body physics.
+
+### Example adapter use
+
+```js
+const population = FrameLabs3AgentFive.createPopulation(24);
+const occupant = population[0];
+
+const decision = occupant.decide(perception, deltaSeconds);
+if (!decision.disabled) {
+  applyOccupantControls(decision.controls);
+  const jump = FrameLabs3AgentFive.shouldJump(
+    decision.controls, body.grounded, body.jumpCooldown <= 0
+  );
+  if (jump) requestOccupantJump(body);
+}
+
+// Report normalized force ratios from the physics solver.
+// A ratio >= 1 means that solver's configured disable threshold was reached.
+occupant.reportPhysicalStress({
+  landingImpact: landingSeverityRatio,
+  stampedeImpact: crowdImpactSeverityRatio,
+  impactForce: impactSeverityRatio,
+  crushForce: crushSeverityRatio
+});
+
+// Give feedback after each action. Mark the final experience terminal.
+occupant.recordOutcome(reward, "hazard-avoidance", { terminal: episodeEnded });
+```
+
+A panic value of 1.0 (100%) disables the occupant. The physics layer can also disable an occupant when landing impact, stampede impact, impact force, or crush-force severity reaches 1.0. These values are normalized ratios supplied by FL3; the host physics system owns the actual game thresholds.
+
+**Training compatibility:** FL3 uses a fresh FL3-specific model because the meanings of its 16 inputs and four actions differ from Agent Five's original environment. The original project's protected trained model parameters are not copied. Each FL3 brain learns through its own PPO rollouts and experience; population descendants can inherit and mutate a parent brain using `createPopulation(size, { parent })`.
+
+**Browser-preview integration:** `occupant-simulation.js` connects this neural module to the multi-floor navigation graph. Start a structural test, place at least one exit before starting the test, then use **Spawn 12** in the occupant population panel. Each occupant receives an independent brain, perception state, memory, and PPO training history. The navigation graph supplies a stable route prior; Agent Five controls steering variation, braking, and jump requests. The adapter computes local smoke, fire, debris, structural-danger, wall-distance, and crowd-density observations, then reports route progress and successful exits as learning feedback. Population simulation is stepped only while the structural test is running; reset and clear operations also clear the active population.
+
+The occupant runtime is deliberately lightweight: occupants are abstract simulation agents, not individually deformable rigid bodies. The browser preview owns their movement and rendering, while the neural network owns action selection and the world-systems module owns navigation and environmental observations. The native C++ executable remains a separate implementation and does not yet load these JavaScript systems.
+
+
+## Structural destruction, effects, and building navigation
+
+The browser simulation loads `world-systems.js` before `app.js`. When a structural member fails or the Break tool is used, the original constraint member is detached from the structural solver and released as two independent rigid debris fragments. Fragments inherit their current translational and rotational motion, collide with the ground, other fragments, nearby standing members, and test loads, then settle into rubble. A bounded debris count prevents unbounded growth during long tests.
+
+Fractures emit localized dust and material-dependent sparks or splinters. The effects system also supports smoke and flame particles. Wood, explosive composite, and flammable composite have combustion properties; burning members heat up, weaken through the existing thermal material model, transfer heat to nearby members, and emit smoke. Explosive composite can trigger an in-game radial impulse once its ignition temperature is reached. Particles are visual approximations; structural temperatures, member failure, and detached debris are separate simulation state.
+
+### Navigation tools
+
+| Tool | Placement | Navigation behavior |
+|---|---|---|
+| Ladder | Click two floor landings | Adds a climb connection with a slower traversal cost |
+| Stairs | Click two floor landings | Adds a walkable inclined floor connection |
+| Elevator | Click two floor stops | Adds a lift connection with a small wait-cost |
+| Exit | Click a floor edge | Marks a safe destination |
+
+Navigation links and exits are saved in the build snapshot and restored by Reset Structure. Select Delete and click a connector or exit to remove it. The navigation graph connects same-floor points with walking edges and different-floor stops through ladders, stairs, or elevators. Its route planner selects a reachable exit using weighted path costs.
+
+### Agent Five navigation adapter
+
+The browser exposes `window.FrameLabs3Navigation`:
+
+- `findRouteToExit(x, y)` returns the nearest reachable exit, route cost, floor difference, direction, and route points.
+- `getOccupantPerception(x, y, extras)` creates the FL3 Agent Five perception object, including floor/exit distances, smoke density, fire intensity, and debris clearance.
+
+This provides the navigation and perception interface used by the FL3 Agent Five occupant runtime. The browser preview can spawn occupants across detected floor levels and route them through connectors to a reachable exit. The native C++ executable is still a separate implementation and does not yet consume these browser JavaScript systems.

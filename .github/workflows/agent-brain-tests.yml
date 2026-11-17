@@ -1,0 +1,29 @@
+name: Agent Five FL3 Tests
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+
+permissions:
+  contents: read
+
+jobs:
+  occupant-brain:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Check simulation module syntax
+        run: |
+          node --check agent-five-fl3.js
+          node --check world-systems.js
+          node --check occupant-simulation.js
+          node --check app.js
+      - name: Run FL3 systems and neural tests
+        run: node --test tests/agent_five_fl3_tests.js tests/world_systems_tests.js tests/occupant_simulation_tests.js
