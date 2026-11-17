@@ -72,7 +72,7 @@ test("ladder, stairs, elevator and exit form multi-floor navigation routes", () 
   const route = systems.findRouteToExit(130, 80, 180);
   assert.ok(route);
   assert.equal(route.floor, 1);
-  assert.ok(route.floorDifference > 0);
+  assert.equal(route.floorDifference, -1);
   assert.ok(route.distance > 0);
 });
 
