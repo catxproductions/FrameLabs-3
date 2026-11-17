@@ -141,8 +141,46 @@
       return d <= speed * dt + 0.001;
     }
 
-    function updateJump(occupant, dt, world) {
+    function findSupportSurface(x, previousY, nextY, world) {
+      const ground = finite(world.ground, 0);
+      const lower = Math.min(previousY, nextY) - 6;
+      const upper = Math.max(previousY, nextY) + 6;
+      let best = null;
+
+      const consider = surfaceY => {
+        if (!Number.isFinite(surfaceY) || surfaceY < lower || surfaceY > upper) return;
+        // Prefer the first surface encountered while falling.
+        if (nextY >= previousY && surfaceY < previousY - 6) return;
+        if (best === null || Math.abs(surfaceY - previousY) < Math.abs(best - previousY)) {
+          best = surfaceY;
+        }
+      };
+
+      // The ground is always a collision surface.
+      if (nextY >= ground || previousY >= ground) consider(ground);
+
+      // Intact, approximately horizontal structural members act as walkable
+      // surfaces. Ropes and detached/broken members cannot support occupants.
+      for (const member of Array.isArray(world.members) ? world.members : []) {
+        if (!member || member.kind === "rope" || member.broken || member.detached ||
+            !Array.isArray(member.points) || member.points.length < 2) continue;
+        for (let i = 1; i < member.points.length; i++) {
+          const a = member.points[i - 1], b = member.points[i];
+          const dx = b.x - a.x, dy = b.y - a.y;
+          if (Math.abs(dx) < 0.001 || Math.abs(dy / dx) > 0.35) continue;
+          const minX = Math.min(a.x, b.x) - 6, maxX = Math.max(a.x, b.x) + 6;
+          if (x < minX || x > maxX) continue;
+          const t = clamp((x - a.x) / dx, 0, 1);
+          consider(a.y + dy * t);
+        }
+      }
+      return best;
+    }
+
+    function updateVerticalPhysics(occupant, dt, world) {
+      if (occupant.traversal) return;
       occupant.jumpCooldown = Math.max(0, occupant.jumpCooldown - dt);
+
       const jumpOpportunity = canJump(occupant, world) === true;
       if (jumpOpportunity && occupant.grounded &&
           agentApi.shouldJump(occupant.controls, true, occupant.jumpCooldown <= 0)) {
@@ -150,14 +188,23 @@
         occupant.grounded = false;
         occupant.jumpCooldown = 0.95;
       }
-      if (!occupant.grounded && !occupant.traversal) {
-        occupant.y += occupant.vy * dt;
-        occupant.vy += GRAVITY * dt;
-        if (occupant.y >= occupant.floorY) {
-          occupant.y = occupant.floorY;
-          occupant.vy = 0;
-          occupant.grounded = true;
-        }
+
+      const previousY = occupant.y;
+      if (!occupant.grounded) occupant.vy += GRAVITY * dt;
+      else occupant.vy = Math.max(0, occupant.vy);
+
+      const nextY = previousY + occupant.vy * dt;
+      const supportY = findSupportSurface(occupant.x, previousY, nextY, world);
+      if (supportY !== null && nextY >= previousY - 0.001) {
+        occupant.y = supportY;
+        occupant.floorY = supportY;
+        occupant.vy = 0;
+        occupant.grounded = true;
+      } else if (supportY !== null && occupant.grounded && nextY <= previousY) {
+        occupant.y = supportY;
+      } else {
+        occupant.y = nextY;
+        occupant.grounded = false;
       }
     }
 
@@ -201,8 +248,6 @@
           if (decision.disabled) continue;
         }
 
-        updateJump(occupant, safeDt, world);
-
         if (occupant.traversal) {
           const traversal = occupant.traversal;
           if (traversal.waitRemaining > 0) {
@@ -228,6 +273,7 @@
           occupant.vx = 0;
           occupant.pendingReward -= safeDt * 0.025;
           occupant.lastOutcome = "no-route";
+          updateVerticalPhysics(occupant, safeDt, world);
           continue;
         }
 
@@ -270,6 +316,8 @@
         occupant.x = clamp(occupant.x + occupant.vx * safeDt, 12, width - 12);
         occupant.distanceTravelled += Math.abs(occupant.x - oldX);
         occupant.floorY = first.y;
+        updateVerticalPhysics(occupant, safeDt, world);
+
         const remainingRoute = worldSystems.findRouteToExit(
           occupant.x, occupant.y, finite(world.ground, 0)
         );
