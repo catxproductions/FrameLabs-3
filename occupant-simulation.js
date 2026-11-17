@@ -41,10 +41,11 @@
       const ground = finite(world.ground, 0);
       const floors = getWorldFloors(ground);
       const spawned = [];
+      const initialCount = occupants.length;
 
       for (let i = 0; i < amount && occupants.length < MAX_OCCUPANTS; i++) {
-        const floorY = floors[(occupants.length + i) % floors.length];
-        const slot = occupants.length + i;
+        const slot = initialCount + i;
+        const floorY = floors[slot % floors.length];
         const x = clamp(width * ((slot + 1) / (amount + 1)), 24, width - 24);
         const id = "occupant-" + nextId++;
         const occupant = {
@@ -137,7 +138,6 @@
     }
 
     function updateJump(occupant, dt) {
-      occupant.jumpCooldown = Math.max(0, occupant.jumpCooldown - dt);
       if (occupant.grounded &&
           agentApi.shouldJump(occupant.controls, true, occupant.jumpCooldown <= 0)) {
         occupant.vy = -JUMP_SPEED;
@@ -209,6 +209,8 @@
             occupant.floorY = traversal.to.y;
             occupant.y = traversal.to.y;
             occupant.traversal = null;
+            occupant.route = null;
+            occupant.routeTimer = 0;
             occupant.grounded = true;
             occupant.vy = 0;
           }
