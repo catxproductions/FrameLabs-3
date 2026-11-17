@@ -23,6 +23,9 @@
     if (!agentApi || !worldSystems || typeof agentApi.OccupantBrain !== "function") {
       throw new Error("Occupant simulation requires Agent Five and an FL3 world-systems instance.");
     }
+    // No jumpable obstacle/collision model exists in the preview yet. A host must
+    // explicitly validate a jump opportunity before the neural jump output is used.
+    const canJump = typeof options.canJump === "function" ? options.canJump : () => false;
 
     const occupants = [];
     let nextId = 1;
@@ -138,8 +141,10 @@
       return d <= speed * dt + 0.001;
     }
 
-    function updateJump(occupant, dt) {
-      if (occupant.grounded &&
+    function updateJump(occupant, dt, world) {
+      occupant.jumpCooldown = Math.max(0, occupant.jumpCooldown - dt);
+      const jumpOpportunity = canJump(occupant, world) === true;
+      if (jumpOpportunity && occupant.grounded &&
           agentApi.shouldJump(occupant.controls, true, occupant.jumpCooldown <= 0)) {
         occupant.vy = -JUMP_SPEED;
         occupant.grounded = false;
@@ -174,7 +179,6 @@
         occupant.elapsed += safeDt;
         occupant.decisionTimer -= safeDt;
         occupant.routeTimer -= safeDt;
-        occupant.jumpCooldown = Math.max(0, occupant.jumpCooldown - safeDt);
 
         if (occupant.routeTimer <= 0 || !occupant.route) updateRoute(occupant, world);
         const route = occupant.route;
@@ -196,6 +200,8 @@
           occupant.decisionTimer = DECISION_INTERVAL;
           if (decision.disabled) continue;
         }
+
+        updateJump(occupant, safeDt, world);
 
         if (occupant.traversal) {
           const traversal = occupant.traversal;
@@ -222,7 +228,6 @@
           occupant.vx = 0;
           occupant.pendingReward -= safeDt * 0.025;
           occupant.lastOutcome = "no-route";
-          updateJump(occupant, safeDt);
           continue;
         }
 
@@ -265,8 +270,6 @@
         occupant.x = clamp(occupant.x + occupant.vx * safeDt, 12, width - 12);
         occupant.distanceTravelled += Math.abs(occupant.x - oldX);
         occupant.floorY = first.y;
-        updateJump(occupant, safeDt);
-
         const remainingRoute = worldSystems.findRouteToExit(
           occupant.x, occupant.y, finite(world.ground, 0)
         );
