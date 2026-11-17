@@ -120,3 +120,27 @@ test("gravity holds occupants on intact structural floors and drops them when th
   assert.ok(Math.abs(occupant.y - 180) < 0.01);
   assert.ok(occupant.y > 80);
 });
+
+
+test("occupants cancel a stair traversal when that connector collapses", () => {
+  const worldSystems = createWorldSystems();
+  const connector = worldSystems.addConnector(
+    "stairs", { x: 100, y: 80 }, { x: 100, y: 180 }
+  );
+  worldSystems.addExit({ x: 280, y: 180 });
+  const population = createPopulationSimulation({ agentApi: AgentFive, worldSystems });
+  const [occupant] = population.spawn(1, { width: 300, ground: 180 });
+  occupant.traversal = {
+    from: { x: 100, y: 80 },
+    to: { x: 100, y: 180 },
+    connectorId: connector.id,
+    kind: "stairs",
+    waitRemaining: 0
+  };
+  connector.falling = true;
+  population.step(1 / 120, {
+    width: 300, ground: 180, members: [], loads: [], materialProfiles: {}
+  });
+  assert.equal(occupant.traversal, null);
+  assert.equal(occupant.grounded, false);
+});
