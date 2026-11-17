@@ -107,7 +107,7 @@
         temperature: hazards.temperature,
         fallingSpeed: Math.max(0, occupant.vy),
         distanceFromFallingObject: Number.isFinite(debrisClearance) ? debrisClearance : width,
-        horizontalSpeed: occupant.vx / 55,
+        horizontalSpeed: occupant.vx,
         structuralDanger: hazards.structuralDanger,
         nearbyOccupantDensity: nearbyOccupantDensity(occupant)
       }, {
@@ -272,15 +272,15 @@
           ? remainingRoute.distance : before;
         occupant.pendingReward += clamp((before - after) / 1000, -0.03, 0.03);
         occupant.pendingReward -= safeDt *
-          (perceptionHazard(occupant, worldSystems) * 0.012 + 0.002);
+          (perceptionHazard(occupant, worldSystems, members) * 0.012 + 0.002);
         occupant.lastOutcome = "navigation";
       }
     }
 
-    function perceptionHazard(occupant, systems) {
+    function perceptionHazard(occupant, systems, members) {
       return clamp(
         systems.smokeDensityAt(occupant.x, occupant.y) * 0.6 +
-        systems.fireIntensityAt(occupant.x, occupant.y, []) * 0.4,
+        systems.fireIntensityAt(occupant.x, occupant.y, members) * 0.4,
         0, 1
       );
     }
