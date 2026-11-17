@@ -227,7 +227,11 @@ void severeTensileImpulseFracturesSteel() {
     const NodeId pulled = world.addNode({6.0f, 5.0f}, false);
     const MemberId steel = world.addMember(fixed, pulled, MaterialKind::Steel);
     require(steel != 0, "failed to create tensile test member");
-    require(world.applyNodeImpulse(pulled, {60.0f, 0.0f}),
+    // Keep the test's initial physical velocity comparable to the former
+    // 2.236 ft world-unit calibration after increasing each unit to 25 ft.
+    const float previousWorldUnitFeet = 2.2360679775f;
+    const float scaleRatio = GridCellSideFeet / previousWorldUnitFeet;
+    require(world.applyNodeImpulse(pulled, {60.0f * scaleRatio, 0.0f}),
             "failed to apply tensile impulse to free endpoint");
 
     for (int i = 0; i < 4 && world.brokenMemberCount() == 0; ++i) {
