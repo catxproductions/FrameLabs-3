@@ -929,6 +929,17 @@
       for (const link of connectors) {
         link.a.x *= scaleX; link.a.y *= scaleY;
         link.b.x *= scaleX; link.b.y *= scaleY;
+        if (link.previousA) {
+          link.previousA.x *= scaleX; link.previousA.y *= scaleY;
+        }
+        if (link.previousB) {
+          link.previousB.x *= scaleX; link.previousB.y *= scaleY;
+        }
+        link.centerX *= scaleX; link.centerY *= scaleY;
+        link.vx *= scaleX; link.vy *= scaleY;
+        link.width *= (scaleX + scaleY) * 0.5;
+        link.length = distance(link.a, link.b);
+        link.restLength = link.length;
       }
       for (const exit of exits) { exit.x *= scaleX; exit.y *= scaleY; }
       for (const body of debris) {
