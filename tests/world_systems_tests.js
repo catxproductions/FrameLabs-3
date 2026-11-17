@@ -177,14 +177,25 @@ test("stairs and elevator shafts follow supported structure and fall when an att
     assert.equal(link.falling, false);
     assert.ok(Math.abs(link.a.y - 80) < 0.01);
 
-    members[0].broken = true;
-    members[0].detached = true;
+    // The whole connector follows both landings while the supporting structure
+    // moves, rather than remaining pinned to its original build coordinates.
+    for (const point of members[0].points) point.y += 10;
+    for (const point of members[1].points) point.y += 10;
+    systems.updateConnectors(1 / 120, { width: 400, ground: 300, nodes: [], members });
+    assert.ok(Math.abs(link.a.y - 90) < 0.01);
+    assert.ok(Math.abs(link.b.y - 190) < 0.01);
+
+    // With both landings gone, the rigid connector falls to the ground.
+    for (const member of members) {
+      member.broken = true;
+      member.detached = true;
+    }
     for (let i = 0; i < 90; i++) {
       systems.updateConnectors(1 / 120, { width: 400, ground: 300, nodes: [], members });
     }
     assert.equal(link.falling, true);
-    assert.ok(link.a.y > 80);
-    assert.ok(link.b.y > 180);
+    assert.ok(link.a.y > 90);
+    assert.ok(link.b.y > 190);
     assert.ok(Number.isFinite(link.vy));
   }
 });
