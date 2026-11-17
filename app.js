@@ -1408,14 +1408,94 @@
       }
     }
 
+
+    function nearestBreakSegment(member, x, y) {
+      let closest = 0, best = Infinity;
+      for (let i = 1; i < member.points.length; i++) {
+        const a = member.points[i - 1], b = member.points[i];
+        const dx = b.x - a.x, dy = b.y - a.y;
+        const t = clamp(((x - a.x) * dx + (y - a.y) * dy) / Math.max(1, dx * dx + dy * dy), 0, 1);
+        const d = Math.hypot(x - a.x - dx * t, y - a.y - dy * t);
+        if (d < best) { best = d; closest = i - 1; }
+      }
+      return closest;
+    }
+
+    function triggerExplosion(x, y, radius = 150, strength = 950) {
+      worldSystems.emitExplosion(x, y, radius, 1);
+      const dt = 1 / 120;
+      const applyRadialImpulse = point => {
+        const dx = point.x - x, dy = point.y - y;
+        const d = Math.hypot(dx, dy);
+        if (d >= radius || !point.inverseMass) return;
+        const falloff = Math.pow(1 - d / radius, 1.35);
+        const nx = d > 0.001 ? dx / d : 0;
+        const ny = d > 0.001 ? dy / d : -1;
+        applyImpulse(point, nx * strength * falloff, ny * strength * falloff, dt);
+      };
+      for (const node of state.nodes) applyRadialImpulse(node);
+      for (const load of state.loads) applyRadialImpulse(load);
+      for (const member of state.members) {
+        if (member.broken || member.detached) continue;
+        let nearest = Infinity, breakSegment = 0;
+        for (let i = 1; i < member.points.length; i++) {
+          const a = member.points[i - 1], b = member.points[i];
+          const dx = b.x - a.x, dy = b.y - a.y;
+          const t = clamp(((x - a.x) * dx + (y - a.y) * dy) / Math.max(1, dx * dx + dy * dy), 0, 1);
+          const d = Math.hypot(x - a.x - dx * t, y - a.y - dy * t);
+          if (d < nearest) { nearest = d; breakSegment = i - 1; }
+        }
+        if (nearest >= radius) continue;
+        const falloff = Math.pow(1 - nearest / radius, 1.2);
+        for (let i = 1; i < member.points.length - 1; i++) applyRadialImpulse(member.points[i]);
+        member.damage = clamp(member.damage + falloff * 0.82, 0, 0.99);
+        if (falloff > 0.62 || member.damage > 0.88) {
+          member.broken = true;
+          member.breakSegment = breakSegment;
+          worldSystems.fractureMember(member, breakSegment, dt);
+        }
+      }
+      recalculateNodeMasses();
+    }
+
+    function igniteAt(x, y) {
+      const member = closestMember(x, y, 32);
+      if (!member) { notify("Aim at a combustible member to ignite it."); return false; }
+      const profile = materialProfiles[member.material] || {};
+      if (!(profile.flammability > 0)) {
+        notify("This material is not combustible. Try wood or flammable composite.");
+        return false;
+      }
+      member.ignited = true;
+      member.temperature = Math.max(member.temperature || 20, profile.ignitionTemperature || 240);
+      member.fireTimer = 0;
+      member.smokeTimer = 0;
+      const center = member.points.reduce((sum, point) => ({
+        x: sum.x + point.x / member.points.length,
+        y: sum.y + point.y / member.points.length
+      }), { x: 0, y: 0 });
+      worldSystems.emitFlame(center.x, center.y, 8);
+      worldSystems.emitSmoke(center.x, center.y, 6);
+      notify(member.material === "explosiveComposite"
+        ? "Explosive composite ignited. Keep the simulation running to observe its thermal response."
+        : "Member ignited. Fire will transfer heat and produce smoke.");
+      return true;
+    }
+
     function iterationGain(targetStiffness, iterations) {
       const target = clamp(targetStiffness, 0, 0.9999);
       return 1 - Math.pow(1 - target, 1 / Math.max(1, iterations));
     }
 
     function physicsStep(dt) {
+      const fireEvents = worldSystems.step(dt, {
+        ground: state.ground, width: state.width, members: state.members,
+        loads: state.loads, materialProfiles
+      });
+      for (const event of fireEvents) triggerExplosion(event.x, event.y, 132, 880);
       for (const node of state.nodes) integrateParticle(node, dt, materialProfiles.concrete);
       for (const member of state.members) {
+        if (member.broken || member.detached) continue;
         const profile = materialProfiles[member.material];
         for (let i = 1; i < member.points.length - 1; i++) {
           integrateParticle(member.points[i], dt, profile);
@@ -1441,26 +1521,33 @@
         const thermalScale = 1 + (profile.thermalExpansion || 0) * Math.max(0, member.temperature - 20);
         const effectiveRestScale = thermalScale * (1 + (member.plasticStrain || 0));
         let maximumStrain = 0;
+        let maximumStrainSegment = 0;
 
         for (let i = 1; i < member.points.length; i++) {
           const baseSegmentRest = member.segmentRests?.[i - 1] ?? member.segmentRest;
           const segmentRest = baseSegmentRest * effectiveRestScale;
           const segmentLength = distance(member.points[i - 1], member.points[i]);
           const tensileStrain = Math.max(0, (segmentLength - segmentRest) / Math.max(0.5, segmentRest));
-          maximumStrain = Math.max(maximumStrain, tensileStrain);
+          if (tensileStrain > maximumStrain) {
+            maximumStrain = tensileStrain;
+            maximumStrainSegment = i - 1;
+          }
         }
 
         member.peakTensileStrain = maximumStrain;
         // Automatic failure releases the member as a whole, matching the
         // existing post-solver fracture path. Do not leave the remaining links
         // actively pulling after one segment has already exceeded capacity.
-        if (maximumStrain > tensileCapacity) member.broken = true;
+        if (maximumStrain > tensileCapacity) {
+          member.broken = true;
+          member.breakSegment = maximumStrainSegment;
+          worldSystems.fractureMember(member, maximumStrainSegment, dt);
+        }
       }
 
       for (let iteration = 0; iteration < solverIterations; iteration++) {
         for (const member of state.members) {
-          const hasFracture = member.broken && Number.isInteger(member.breakSegment);
-          if (member.broken && !hasFracture) continue;
+          if (member.broken || member.detached) continue;
           const profile = materialProfiles[member.material];
           const heat = clamp((member.temperature - 20) / 850, 0, 1);
           const thermalStiffness = 1 - profile.heatSoftening * heat;
@@ -1485,6 +1572,8 @@
             // connected structure before the normal end-of-step failure check.
             if (!member.broken && tensileStrain > tensileCapacity) {
               member.broken = true;
+              member.breakSegment = i - 1;
+              worldSystems.fractureMember(member, i - 1, dt);
               releasedDuringSolve = true;
               break;
             }
@@ -1537,7 +1626,7 @@
       solveMemberMemberContacts();
 
       for (const member of state.members) {
-        if (member.broken) continue;
+        if (member.broken || member.detached) continue;
         const profile = materialProfiles[member.material];
         let currentLength = 0, maxAngle = 0;
         for (let i = 1; i < member.points.length; i++) {
@@ -1582,9 +1671,24 @@
         if (member.stress > 0.62) member.fatigue += dt * (member.stress - 0.58) * 0.75;
         else member.fatigue = Math.max(0, member.fatigue - dt * 0.08);
         member.damage = clamp(member.damage + Math.max(0, member.stress - 0.78) * dt * 0.24, 0, 0.99);
-        if (member.stress > 1.0 || member.fatigue > fatigueLimit) member.broken = true;
+        if (member.stress > 1.0 || member.fatigue > fatigueLimit) {
+          member.broken = true;
+          member.breakSegment = nearestBreakSegment(member,
+            (member.points[0].x + member.points[member.points.length - 1].x) * 0.5,
+            (member.points[0].y + member.points[member.points.length - 1].y) * 0.5);
+        }
         member.temperature = Math.max(20, member.temperature - dt * 1.5);
       }
+      for (const member of state.members) {
+        if (member.broken && !member.detached && !member.fractureProcessed) {
+          const fallbackSegment = Number.isInteger(member.breakSegment) ? member.breakSegment :
+            nearestBreakSegment(member,
+              (member.points[0].x + member.points[member.points.length - 1].x) * 0.5,
+              (member.points[0].y + member.points[member.points.length - 1].y) * 0.5);
+          worldSystems.fractureMember(member, fallbackSegment, dt);
+        }
+      }
+      recalculateNodeMasses();
     }
 
     function draw() {
