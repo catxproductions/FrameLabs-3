@@ -164,6 +164,14 @@
         <button type="button" id="stressToggle" aria-pressed="true">Stress: On</button>
         <button type="button" id="gridSnapToggle" aria-pressed="false">Grid snap: Off</button>
         <button type="button" id="clearScene" class="clear-scene-action">Clear scene</button>
+      </div>
+      <div class="browser-population">
+        <label>OCCUPANT POPULATION</label>
+        <div class="browser-population-actions">
+          <button type="button" id="spawnOccupants" disabled>＋ Spawn 12</button>
+          <button type="button" id="clearOccupants" disabled>Clear</button>
+        </div>
+        <p id="populationStatus">0 occupants · Start a test and place an exit to enable.</p>
       </div>`;
     const sceneSection = toolbar.querySelectorAll(".tool-section")[1];
     sceneSection.innerHTML = `
@@ -182,6 +190,7 @@
         <div>FAILED <b id="brokenCount">0</b></div><div>LOADS <b id="loadCount">0</b></div>
         <div>DEBRIS <b id="debrisCount">0</b></div><div>PARTICLES <b id="particleCount">0</b></div>
         <div>CONNECTORS <b id="connectorCount">0</b></div><div>EXITS <b id="exitCount">0</b></div>
+        <div>OCCUPANTS <b id="occupantCount">0</b></div><div>EVACUATED <b id="evacuatedCount">0</b></div>
       </div>`;
 
     const style = document.createElement("style");
@@ -201,6 +210,13 @@
       .browser-sim-actions button:disabled:hover,.browser-tool-grid .tool:disabled:hover{border-color:rgba(141,139,205,.17);color:#77758f}
       .browser-sim-actions .clear-scene-action{grid-column:1/-1;border-color:rgba(190,104,111,.38);color:#d59a9f}
       .browser-sim-actions .clear-scene-action:hover{border-color:#c87982;color:#ffe0e2}
+      .browser-population{display:grid;gap:7px;margin-top:14px;padding-top:11px;border-top:1px solid rgba(141,139,205,.14)}
+      .browser-population>label{color:#77758f;font-size:7px;font-weight:800;letter-spacing:.13em}
+      .browser-population-actions{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+      .browser-population-actions button{min-height:30px;border:1px solid rgba(141,139,205,.17);border-radius:2px;background:#0c0c14;color:#aaa8c7;font-size:8px}
+      .browser-population-actions button:hover{border-color:#7775c8;color:#fff}
+      .browser-population-actions button:disabled{opacity:.38;cursor:not-allowed}
+      #populationStatus{margin:0;color:#77758f;font-size:8px;line-height:1.5}
       .browser-tool-grid .tool{min-width:0;min-height:36px}
       .browser-tool-grid .tool b{font-size:9px}
       #selectionSummary{min-height:52px}
@@ -296,6 +312,17 @@
       stress: true, gridSnap: false, gridSize: GRID_CELL_PX,
       lastTime: 0, accumulator: 0, width: 0, height: 0, ground: 0
     };
+    const occupantSimulation = window.FrameLabs3OccupantSimulation && window.FrameLabs3AgentFive
+      ? window.FrameLabs3OccupantSimulation.createPopulationSimulation({
+          agentApi: window.FrameLabs3AgentFive, worldSystems
+        }) : null;
+    if (occupantSimulation) {
+      window.FrameLabs3Population = Object.freeze({
+        spawn: count => occupantSimulation.spawn(count, { width: state.width, ground: state.ground }),
+        clear: () => occupantSimulation.clear(),
+        getOccupants: () => occupantSimulation.getOccupants()
+      });
+    }
 
     const distance = (a, b) => Math.hypot(b.x - a.x, b.y - a.y);
     const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
@@ -728,6 +755,7 @@
       state.dragging = null;
       state.testSnapshot = null;
       worldSystems.clearAll();
+      if (occupantSimulation) occupantSimulation.clear();
       state.firstNavPoint = null;
       state.testMode = false;
       state.paused = true;
@@ -830,6 +858,11 @@
         button.disabled = (state.testMode && buildOnly.includes(button.dataset.tool)) ||
           (!state.testMode && testOnly.includes(button.dataset.tool));
       });
+      const spawnButton = document.getElementById("spawnOccupants");
+      const clearPopulationButton = document.getElementById("clearOccupants");
+      if (spawnButton) spawnButton.disabled = !occupantSimulation || !state.testMode || worldSystems.getExitCount() === 0;
+      if (clearPopulationButton) clearPopulationButton.disabled =
+        !occupantSimulation || occupantSimulation.getCount() === 0;
     }
 
     // Rebuild each intact member's hidden simulation stations from its current
@@ -1018,6 +1051,24 @@
     document.getElementById("materialSelect").addEventListener("change", event => {
       state.material = event.target.value;
       notify("New members will use " + state.material + ".");
+    });
+    document.getElementById("spawnOccupants").addEventListener("click", () => {
+      if (!occupantSimulation || !state.testMode) {
+        notify("Start a structural test before spawning occupants.");
+        return;
+      }
+      if (!worldSystems.getExitCount()) {
+        notify("Place at least one exit before spawning occupants.");
+        return;
+      }
+      const added = occupantSimulation.spawn(12, { width: state.width, ground: state.ground });
+      notify(added.length + " occupants added. Their Agent Five brains are now active.");
+      updateSimulationControls(); updateInspector(); draw();
+    });
+    document.getElementById("clearOccupants").addEventListener("click", () => {
+      if (occupantSimulation) occupantSimulation.clear();
+      updateSimulationControls(); updateInspector(); draw();
+      notify("Occupant population cleared.");
     });
     document.getElementById("startTestSimulation").addEventListener("click", toggleTestSimulation);
     document.getElementById("resetStructure").addEventListener("click", resetStructure);
@@ -1535,6 +1586,12 @@
         loads: state.loads, materialProfiles
       });
       for (const event of fireEvents) triggerExplosion(event.x, event.y, 132, 880);
+      if (occupantSimulation && state.testMode) {
+        occupantSimulation.step(dt, {
+          ground: state.ground, width: state.width, members: state.members,
+          loads: state.loads, materialProfiles
+        });
+      }
       for (const node of state.nodes) integrateParticle(node, dt, materialProfiles.concrete);
       for (const member of state.members) {
         if (member.broken || member.detached) continue;
@@ -1806,6 +1863,7 @@
         ctx.beginPath();ctx.arc(state.firstNavPoint.x,state.firstNavPoint.y,9,0,Math.PI*2);ctx.stroke();ctx.setLineDash([]);
       }
       worldSystems.drawDebrisAndParticles(ctx);
+      if (occupantSimulation) occupantSimulation.draw(ctx);
       updateInspector();
       const status=document.querySelector(".view-status span:first-child");
       const modeLabel = !state.testMode
