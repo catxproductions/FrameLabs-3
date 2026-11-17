@@ -182,6 +182,10 @@ The Windows edition includes native ladder, stairs, and elevator tools. Place ea
 
 Use **Ladder**, **Stairs**, or **Elevator** from the Windows toolbox (keyboard shortcuts: L, S, and V). Each connector requires two landing clicks. A connector placed without valid support geometry releases into free fall when the simulation starts.
 
+### Occupant impact and crush response
+
+Browser-preview occupants now accumulate physical injury from hard landings, moving structural members, falling debris, and sustained rubble loads. Fall impact is based on landing speed and drop distance; debris/member impacts use mass and relative speed; settled debris contributes ongoing crush load. Moderate impacts reduce health and movement speed, while severe impacts or accumulated crush load incapacitate the agent. Incapacitated occupants stop AI movement but continue to obey gravity. The population status reports injured and inactive counts, and the renderer marks injured occupants without graphic injury effects.
+
 ### Agent Five navigation adapter
 
 The browser exposes `window.FrameLabs3Navigation`:

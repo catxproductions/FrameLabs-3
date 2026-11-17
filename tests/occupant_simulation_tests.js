@@ -150,3 +150,113 @@ test("occupants cancel a stair traversal when that connector collapses", () => {
   assert.equal(occupant.traversal, null);
   assert.equal(occupant.grounded, false);
 });
+
+
+test("a 50-foot fall incapacitates an occupant on landing", () => {
+  const worldSystems = createWorldSystems();
+  const population = createPopulationSimulation({ agentApi: AgentFive, worldSystems });
+  const [occupant] = population.spawn(1, { width: 400, ground: 540 });
+  occupant.x = 200;
+  occupant.y = 0;
+  occupant.floorY = 0;
+  occupant.grounded = false;
+  const world = { width: 400, ground: 540, members: [], loads: [], materialProfiles: {} };
+
+  for (let i = 0; i < 1200 && !occupant.brain.disabled; i++) population.step(1 / 120, world);
+
+  assert.equal(occupant.grounded, true);
+  assert.equal(occupant.brain.disabled, true);
+  assert.equal(occupant.brain.disableReason, "hard-landing");
+  assert.equal(occupant.health, 0);
+  assert.equal(population.getDisabledCount(), 1);
+});
+
+test("a lower fall injures an occupant and reduces mobility without instant incapacitation", () => {
+  const worldSystems = createWorldSystems();
+  const population = createPopulationSimulation({ agentApi: AgentFive, worldSystems });
+  const [occupant] = population.spawn(1, { width: 400, ground: 150 });
+  occupant.x = 200;
+  occupant.y = 0;
+  occupant.floorY = 0;
+  occupant.grounded = false;
+  const world = { width: 400, ground: 150, members: [], loads: [], materialProfiles: {} };
+
+  for (let i = 0; i < 600 && !occupant.grounded; i++) population.step(1 / 120, world);
+
+  assert.equal(occupant.grounded, true);
+  assert.ok(occupant.health < 100);
+  assert.ok(occupant.health > 0);
+  assert.equal(occupant.brain.disabled, false);
+  assert.equal(population.getInjuredCount(), 1);
+});
+
+test("a fast heavy debris impact incapacitates an occupant", () => {
+  const worldSystems = createWorldSystems();
+  const population = createPopulationSimulation({ agentApi: AgentFive, worldSystems });
+  const [occupant] = population.spawn(1, { width: 300, ground: 180 });
+  occupant.x = 150;
+  occupant.y = 100;
+  occupant.grounded = true;
+  worldSystems.getDebris().push({
+    id: 9001, x: 150, y: 95, px: 150, py: 85,
+    angle: 0, previousAngle: 0, length: 100, width: 18,
+    radius: 18, mass: 30, settled: false, age: 0
+  });
+
+  population.step(1 / 120, {
+    width: 300, ground: 180, members: [], loads: [], materialProfiles: {}
+  });
+
+  assert.equal(occupant.brain.disabled, true);
+  assert.equal(occupant.brain.disableReason, "excessive-impact-force");
+  assert.equal(occupant.health, 0);
+});
+
+test("a pile of settled structural debris applies sustained crush load", () => {
+  const worldSystems = createWorldSystems();
+  const population = createPopulationSimulation({ agentApi: AgentFive, worldSystems });
+  const [occupant] = population.spawn(1, { width: 300, ground: 180 });
+  occupant.x = 150;
+  occupant.y = 100;
+  occupant.grounded = true;
+  for (let i = 0; i < 4; i++) {
+    worldSystems.getDebris().push({
+      id: 9100 + i, x: 150, y: 95, px: 150, py: 95,
+      angle: 0, previousAngle: 0, length: 100, width: 18,
+      radius: 18, mass: 40, settled: true, age: 1
+    });
+  }
+
+  population.step(1 / 120, {
+    width: 300, ground: 180, members: [], loads: [], materialProfiles: {}
+  });
+
+  assert.equal(occupant.brain.disabled, true);
+  assert.equal(occupant.brain.disableReason, "crush-threshold");
+  assert.equal(occupant.health, 0);
+  assert.equal(occupant.crushLoadKg, 160);
+});
+
+test("a moving structural member can injure an occupant before it fractures", () => {
+  const worldSystems = createWorldSystems();
+  const population = createPopulationSimulation({ agentApi: AgentFive, worldSystems });
+  const [occupant] = population.spawn(1, { width: 300, ground: 180 });
+  occupant.x = 150;
+  occupant.y = 100;
+  occupant.grounded = true;
+  const member = {
+    id: 77, kind: "beam", broken: false, detached: false, memberMass: 40,
+    points: [
+      { x: 100, y: 95, px: 100, py: 75 },
+      { x: 200, y: 95, px: 200, py: 75 }
+    ]
+  };
+
+  population.step(1 / 120, {
+    width: 300, ground: 180, members: [member], loads: [], materialProfiles: {}
+  });
+
+  assert.ok(occupant.health < 100);
+  assert.ok(["moving-structure-impact", "falling-debris-impact"].includes(occupant.lastDamageReason) ||
+    occupant.brain.disabled);
+});

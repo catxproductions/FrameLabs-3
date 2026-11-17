@@ -16,6 +16,12 @@
   const MAX_OCCUPANTS = 150;
   const GRAVITY = 460;
   const JUMP_SPEED = 145;
+  const METERS_PER_PIXEL = Math.sqrt(5) * 0.3048 / 24;
+  const OCCUPANT_RADIUS = 5.5;
+  const FALL_FATAL_SPEED = 620;
+  const IMPACT_FATAL_ENERGY = 2200;
+  const CRUSH_FATAL_MASS = 140;
+  const MIN_COLLISION_SPEED = 85;
 
   function createPopulationSimulation(options = {}) {
     const agentApi = options.agentApi || root.FrameLabs3AgentFive;
@@ -60,7 +66,12 @@
           decisionTimer: 0, routeTimer: 0, route: null,
           hasAction: false, pendingReward: 0, lastOutcome: "navigation",
           jumpCooldown: 0, grounded: true, evacuated: false,
-          elapsed: 0, distanceTravelled: 0
+          elapsed: 0, distanceTravelled: 0,
+          fallStartY: null,
+          health: 100, injury: 0, lastDamageReason: null,
+          recentImpactEnergy: 0, crushExposure: 0, crushLoadKg: 0,
+          lastDebrisHits: Object.create(null),
+          lastMemberHits: Object.create(null)
         };
         occupants.push(occupant);
         spawned.push(occupant);
@@ -178,6 +189,208 @@
       return best;
     }
 
+    function applyPhysicalDamage(occupant, damage, reason, stress = {}) {
+      if (!occupant || !occupant.brain || occupant.brain.disabled) return false;
+      const amount = clamp(finite(damage), 0, 100);
+      if (amount > 0) {
+        occupant.health = clamp(finite(occupant.health, 100) - amount, 0, 100);
+        occupant.injury = 100 - occupant.health;
+        occupant.lastDamageReason = reason;
+        occupant.lastDamageAt = occupant.elapsed;
+        occupant.pendingReward = finite(occupant.pendingReward) - Math.min(2, amount / 45);
+        occupant.lastOutcome = reason;
+      }
+      if (typeof occupant.brain.reportPhysicalStress === "function") {
+        occupant.brain.reportPhysicalStress(stress);
+      }
+      if (occupant.health <= 0 && !occupant.brain.disabled) {
+        occupant.brain.disable(reason || "physical-impact");
+      }
+      if (occupant.brain.disabled) {
+        occupant.health = 0;
+        occupant.injury = 100;
+        occupant.traversal = null;
+        occupant.route = null;
+      }
+      return occupant.brain.disabled;
+    }
+
+    function handleLandingImpact(occupant, impactSpeed, fallDistance) {
+      const speed = Math.max(0, finite(impactSpeed));
+      if (speed < 150 || fallDistance < 10) return;
+      const severity = speed / FALL_FATAL_SPEED;
+      const damage = clamp(severity * severity * 100, 0, 100);
+      applyPhysicalDamage(occupant, damage, "fall-impact", {
+        landingImpact: severity
+      });
+    }
+
+    function nearestPointOnSegment(point, a, b) {
+      const dx = b.x - a.x, dy = b.y - a.y;
+      const lengthSquared = dx * dx + dy * dy;
+      const t = lengthSquared > 1e-8
+        ? clamp(((point.x - a.x) * dx + (point.y - a.y) * dy) / lengthSquared, 0, 1) : 0;
+      return { x: a.x + dx * t, y: a.y + dy * t, t };
+    }
+
+    function distanceToRotatedBody(point, body, centerX, centerY, angle) {
+      const dx = point.x - centerX, dy = point.y - centerY;
+      const cosine = Math.cos(angle), sine = Math.sin(angle);
+      const localX = dx * cosine + dy * sine;
+      const localY = -dx * sine + dy * cosine;
+      const halfLength = Math.max(1, finite(body.length, 8)) * 0.5;
+      const halfWidth = Math.max(1, finite(body.width, 5)) * 0.5;
+      const outsideX = Math.max(0, Math.abs(localX) - halfLength);
+      const outsideY = Math.max(0, Math.abs(localY) - halfWidth);
+      return Math.hypot(outsideX, outsideY);
+    }
+
+    function registerImpactEnergy(occupant, energyJ, reason, dt) {
+      const energy = Math.max(0, finite(energyJ));
+      if (energy < 1 || occupant.brain.disabled) return;
+      occupant.recentImpactEnergy =
+        Math.max(0, finite(occupant.recentImpactEnergy)) * Math.exp(-dt / 0.85) + energy;
+      const severity = occupant.recentImpactEnergy / IMPACT_FATAL_ENERGY;
+      const damage = clamp(energy / IMPACT_FATAL_ENERGY * 85, 0, 85);
+      applyPhysicalDamage(occupant, damage, reason, { impactForce: severity });
+    }
+
+    function updateDebrisImpacts(occupant, dt) {
+      const debris = typeof worldSystems.getDebris === "function"
+        ? worldSystems.getDebris() : [];
+      const center = { x: occupant.x, y: occupant.y - OCCUPANT_RADIUS };
+      const safeDt = Math.max(1 / 240, dt);
+      let staticCrushMass = 0;
+      const activeDebrisContacts = new Set();
+
+      for (let index = 0; index < debris.length; index++) {
+        const body = debris[index];
+        if (!body || !Number.isFinite(body.x + body.y)) continue;
+        const px = finite(body.px, body.x), py = finite(body.py, body.y);
+        const angle = finite(body.angle);
+        const previousAngle = finite(body.previousAngle, angle);
+        const currentDistance = distanceToRotatedBody(center, body, body.x, body.y, angle);
+        const previousDistance = distanceToRotatedBody(center, body, px, py, previousAngle);
+        const sweepPoint = nearestPointOnSegment(center, { x: px, y: py }, { x: body.x, y: body.y });
+        const sweepDistance = distance(center, sweepPoint);
+        const sweepRadius = OCCUPANT_RADIUS + Math.min(18, Math.max(0, finite(body.radius)));
+        const currentContact = currentDistance <= OCCUPANT_RADIUS;
+        const previousContact = previousDistance <= OCCUPANT_RADIUS;
+        const sweptContact = sweepDistance <= sweepRadius;
+        if (!currentContact && !previousContact && !sweptContact) continue;
+
+        const key = String(body.id === undefined ? index : body.id);
+        activeDebrisContacts.add(key);
+        const vx = (body.x - px) / safeDt;
+        const vy = (body.y - py) / safeDt;
+        const relativeSpeed = Math.hypot(vx - finite(occupant.vx), vy - finite(occupant.vy));
+        const bodyMass = clamp(finite(body.mass, 1), 0.05, 100000);
+
+        if (relativeSpeed >= MIN_COLLISION_SPEED &&
+            finite(occupant.lastDebrisHits[key], -Infinity) + 0.42 <= occupant.elapsed) {
+          occupant.lastDebrisHits[key] = occupant.elapsed;
+          const speedMps = relativeSpeed * METERS_PER_PIXEL;
+          registerImpactEnergy(
+            occupant, 0.5 * bodyMass * speedMps * speedMps,
+            "falling-debris-impact", safeDt
+          );
+          if (occupant.brain.disabled) return;
+        }
+
+        if (currentContact && (body.settled || relativeSpeed < 45)) {
+          staticCrushMass += bodyMass;
+        }
+      }
+
+      for (const key of Object.keys(occupant.lastDebrisHits)) {
+        if (!activeDebrisContacts.has(key) &&
+            occupant.elapsed - occupant.lastDebrisHits[key] > 2) {
+          delete occupant.lastDebrisHits[key];
+        }
+      }
+
+      occupant.crushLoadKg = staticCrushMass;
+      if (staticCrushMass > 0) {
+        occupant.crushExposure = finite(occupant.crushExposure) +
+          dt * clamp(staticCrushMass / 50, 0, 3);
+        const severity = Math.max(staticCrushMass / CRUSH_FATAL_MASS, occupant.crushExposure / 3);
+        const crushDamage = dt * 18 * clamp(staticCrushMass / 70, 0, 2);
+        applyPhysicalDamage(occupant, crushDamage, "trapped-under-rubble", {
+          crushForce: severity
+        });
+      } else {
+        occupant.crushExposure = Math.max(0, finite(occupant.crushExposure) - dt * 0.7);
+      }
+    }
+
+    function updateMovingMemberImpacts(occupant, dt, world) {
+      const members = Array.isArray(world.members) ? world.members : [];
+      const center = { x: occupant.x, y: occupant.y - OCCUPANT_RADIUS };
+      const safeDt = Math.max(1 / 240, dt);
+
+      for (const member of members) {
+        if (!member || member.broken || member.detached || member.kind === "rope" ||
+            !Array.isArray(member.points) || member.points.length < 2) continue;
+        let totalLength = 0;
+        for (let i = 1; i < member.points.length; i++) {
+          totalLength += distance(member.points[i - 1], member.points[i]);
+        }
+        if (totalLength < 1) continue;
+
+        let strongestEnergy = 0;
+        for (let i = 1; i < member.points.length; i++) {
+          const a = member.points[i - 1], b = member.points[i];
+          const previousA = { x: finite(a.px, a.x), y: finite(a.py, a.y) };
+          const previousB = { x: finite(b.px, b.x), y: finite(b.py, b.y) };
+          const currentHit = nearestPointOnSegment(center, a, b);
+          const previousHit = nearestPointOnSegment(center, previousA, previousB);
+          const currentDistance = distance(center, currentHit);
+          const previousDistance = distance(center, previousHit);
+          const trajectoryA = nearestPointOnSegment(center, previousA, a);
+          const trajectoryB = nearestPointOnSegment(center, previousB, b);
+          const trajectoryDistance = Math.min(distance(center, trajectoryA), distance(center, trajectoryB));
+          const thickness = member.kind === "slab" ? 10 : 6;
+          if (Math.min(currentDistance, previousDistance, trajectoryDistance) >
+              OCCUPANT_RADIUS + thickness) continue;
+
+          const t = currentDistance <= previousDistance ? currentHit.t : previousHit.t;
+          const avx = (a.x - previousA.x) / safeDt;
+          const avy = (a.y - previousA.y) / safeDt;
+          const bvx = (b.x - previousB.x) / safeDt;
+          const bvy = (b.y - previousB.y) / safeDt;
+          const vx = avx * (1 - t) + bvx * t;
+          const vy = avy * (1 - t) + bvy * t;
+          const relativeSpeed = Math.hypot(vx - finite(occupant.vx), vy - finite(occupant.vy));
+          if (relativeSpeed < MIN_COLLISION_SPEED) continue;
+
+          const segmentMass = Math.max(0.05,
+            finite(member.memberMass, 1) * distance(a, b) / totalLength);
+          const speedMps = relativeSpeed * METERS_PER_PIXEL;
+          strongestEnergy = Math.max(strongestEnergy, 0.5 * segmentMass * speedMps * speedMps);
+        }
+
+        const key = String(member.id);
+        if (strongestEnergy > 0 &&
+            finite(occupant.lastMemberHits[key], -Infinity) + 0.42 <= occupant.elapsed) {
+          occupant.lastMemberHits[key] = occupant.elapsed;
+          registerImpactEnergy(occupant, strongestEnergy, "moving-structure-impact", safeDt);
+          if (occupant.brain.disabled) return;
+        }
+      }
+
+      for (const key of Object.keys(occupant.lastMemberHits)) {
+        if (occupant.elapsed - occupant.lastMemberHits[key] > 2) delete occupant.lastMemberHits[key];
+      }
+    }
+
+    function updatePhysicalHazards(occupant, dt, world) {
+      occupant.recentImpactEnergy =
+        Math.max(0, finite(occupant.recentImpactEnergy)) * Math.exp(-dt / 0.85);
+      updateDebrisImpacts(occupant, dt);
+      if (occupant.brain.disabled) return;
+      updateMovingMemberImpacts(occupant, dt, world);
+    }
+
     function updateVerticalPhysics(occupant, dt, world) {
       if (occupant.traversal) return;
       occupant.jumpCooldown = Math.max(0, occupant.jumpCooldown - dt);
@@ -191,19 +404,31 @@
       }
 
       const previousY = occupant.y;
+      if (!occupant.grounded && !Number.isFinite(occupant.fallStartY)) {
+        occupant.fallStartY = previousY;
+      }
       if (!occupant.grounded) occupant.vy += GRAVITY * dt;
       else occupant.vy = Math.max(0, occupant.vy);
 
       const nextY = previousY + occupant.vy * dt;
       const supportY = findSupportSurface(occupant.x, previousY, nextY, world);
       if (supportY !== null && nextY >= previousY - 0.001) {
+        if (!occupant.grounded) {
+          const fallStartY = Number.isFinite(occupant.fallStartY)
+            ? occupant.fallStartY : previousY;
+          handleLandingImpact(occupant, occupant.vy, Math.max(0, supportY - fallStartY));
+        }
         occupant.y = supportY;
         occupant.floorY = supportY;
         occupant.vy = 0;
         occupant.grounded = true;
+        occupant.fallStartY = null;
       } else if (supportY !== null && occupant.grounded && nextY <= previousY) {
         occupant.y = supportY;
       } else {
+        if (occupant.grounded || !Number.isFinite(occupant.fallStartY)) {
+          occupant.fallStartY = previousY;
+        }
         occupant.y = nextY;
         occupant.grounded = false;
       }
@@ -223,8 +448,20 @@
       const members = Array.isArray(world.members) ? world.members : [];
 
       for (const occupant of occupants) {
-        if (occupant.evacuated || occupant.brain.disabled) continue;
+        if (occupant.evacuated) continue;
         occupant.elapsed += safeDt;
+        if (occupant.brain.disabled) {
+          occupant.vx = 0;
+          occupant.traversal = null;
+          updateVerticalPhysics(occupant, safeDt, world);
+          continue;
+        }
+        updatePhysicalHazards(occupant, safeDt, world);
+        if (occupant.brain.disabled) {
+          occupant.vx = 0;
+          occupant.traversal = null;
+          continue;
+        }
         occupant.decisionTimer -= safeDt;
         occupant.routeTimer -= safeDt;
 
@@ -325,7 +562,8 @@
           finite(occupant.controls.thrustRight)
         );
         const brake = clamp(finite(occupant.controls.brake), 0, 1);
-        const speed = 48 * (0.72 + drive * 0.28) * (1 - brake * 0.48);
+        const injuryMobility = 0.45 + clamp(finite(occupant.health, 100) / 100, 0, 1) * 0.55;
+        const speed = 48 * (0.72 + drive * 0.28) * (1 - brake * 0.48) * injuryMobility;
         const oldX = occupant.x;
         occupant.vx = steering * speed;
         occupant.x = clamp(occupant.x + occupant.vx * safeDt, 12, width - 12);
@@ -364,6 +602,8 @@
         ctx.globalAlpha = occupant.evacuated ? 0.62 : 0.95;
         ctx.fillStyle = occupant.evacuated ? "#79d2a4" :
           occupant.brain.disabled ? "#777184" :
+          occupant.health < 35 ? "#df777e" :
+          occupant.health < 70 ? "#e0a36d" :
           occupant.brain.panic > 0.7 ? "#e0a36d" : "#b8c5ff";
         ctx.strokeStyle = "rgba(15,16,30,.9)";
         ctx.lineWidth = 1.5;
@@ -371,8 +611,9 @@
         ctx.arc(x, y, 5.2, 0, Math.PI * 2);
         ctx.fill();
         ctx.stroke();
-        if (occupant.evacuated) {
-          ctx.strokeStyle = "#79d2a4";
+        if (occupant.evacuated || occupant.health < 99.9) {
+          ctx.strokeStyle = occupant.evacuated ? "#79d2a4" :
+            occupant.health < 35 ? "#df777e" : "#e0a36d";
           ctx.lineWidth = 1.5;
           ctx.beginPath();
           ctx.arc(x, y, 8.5, 0, Math.PI * 2);
@@ -387,6 +628,7 @@
       getCount: () => occupants.length,
       getEvacuatedCount: () => occupants.filter(item => item.evacuated).length,
       getDisabledCount: () => occupants.filter(item => item.brain.disabled).length,
+      getInjuredCount: () => occupants.filter(item => item.health < 99.9).length,
       getOccupants: () => occupants
     });
   }
