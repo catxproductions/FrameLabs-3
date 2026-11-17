@@ -171,7 +171,7 @@
           <button type="button" id="spawnOccupants" disabled>＋ Spawn 12</button>
           <button type="button" id="clearOccupants" disabled>Clear</button>
         </div>
-        <p id="populationStatus">0 occupants · Start a test and place an exit to enable.</p>
+        <p id="populationStatus">0 occupants · Place an exit, then start a test to enable.</p>
       </div>`;
     const sceneSection = toolbar.querySelectorAll(".tool-section")[1];
     sceneSection.innerHTML = `
