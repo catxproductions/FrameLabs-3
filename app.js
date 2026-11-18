@@ -153,6 +153,15 @@
           <button class="tool" data-tool="elevator" aria-pressed="false"><span>⇵</span><b>Elevator</b><kbd>E</kbd></button>
           <button class="tool" data-tool="exit" aria-pressed="false"><span>⇥</span><b>Exit</b><kbd>X</kbd></button>
         </div>
+        <div class="quick-build-section">
+          <p class="quick-build-title">QUICK BUILD <span>DRAG TO PLACE</span></p>
+          <div class="tool-grid browser-tool-grid quick-build-grid">
+            <button class="tool" data-tool="beam" aria-pressed="false" title="Drag horizontally to place a beam"><span>━</span><b>Beam</b><kbd>B</kbd></button>
+            <button class="tool" data-tool="column" aria-pressed="false" title="Drag vertically to place a column"><span>┃</span><b>Column</b><kbd>C</kbd></button>
+            <button class="tool" data-tool="brace" aria-pressed="false" title="Drag diagonally to place a brace"><span>╱</span><b>Brace</b><kbd>D</kbd></button>
+          </div>
+          <p class="browser-hint">Drag between points. Beams stay level, columns stay vertical, and braces snap to a 45° diagonal.</p>
+        </div>
       </div>
       <div id="floorModeTools" hidden>
         <div class="tool-grid browser-tool-grid">
@@ -235,6 +244,12 @@
       .mode-option.selected{border-color:#8986d8;background:rgba(92,89,165,.22);color:#e1dfff}
       .mode-option:disabled{opacity:.4;cursor:not-allowed}
       #frameModeTools[hidden],#floorModeTools[hidden]{display:none!important}
+      .quick-build-section{margin-top:9px;padding-top:9px;border-top:1px solid rgba(141,139,205,.14)}
+      .quick-build-title{display:flex;justify-content:space-between;align-items:center;margin:0 0 7px;color:#a9a6d3;font-size:8px;font-weight:800;letter-spacing:1.25px}
+      .quick-build-title span{color:#66647e;font-size:7px;font-weight:600;letter-spacing:.8px}
+      .quick-build-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+      .quick-build-grid .tool{min-height:40px}
+      .quick-build-grid .tool span{font-size:17px}
       .browser-tool-grid .tool{min-width:0;min-height:36px}
       .browser-tool-grid .tool b{font-size:9px}
       #selectionSummary{min-height:52px}
@@ -324,7 +339,7 @@
     };
     const state = {
       nodes: [], members: [], loads: [], nextNode: 1, nextMember: 1,
-      tool: "select", buildMode: "frame", panelDraft: null,
+      tool: "select", buildMode: "frame", panelDraft: null, quickBuildDraft: null,
       material: "steel", firstNode: null, selectedNode: null,
       selectedMember: null, selectedLoad: null, dragging: null, paused: true,
       firstNavPoint: null, testMode: false, testSnapshot: null,
@@ -378,6 +393,22 @@
       for (const node of state.nodes) refreshNodeInverseMass(node);
     }
 
+    function memberCollisionRadius(kind) {
+      if (kind === "floor") return 5.2;
+      if (kind === "wall") return 4.5;
+      if (kind === "column") return 3.3;
+      if (kind === "brace") return 2.3;
+      return 2.6;
+    }
+
+    function memberSectionFactor(kind) {
+      if (kind === "floor") return 2.2;
+      if (kind === "wall") return 1.7;
+      if (kind === "column") return 1.3;
+      if (kind === "brace") return 0.78;
+      return 1;
+    }
+
     function addMember(a, b, material, kind = "beam") {
       if (!a || !b || a === b || state.members.some(m => !m.broken && (m.kind || "beam") === kind &&
         ((m.a === a && m.b === b) || (m.a === b && m.b === a)))) return null;
@@ -392,7 +423,7 @@
         const x = a.x + (b.x - a.x) * t;
         const y = a.y + (b.y - a.y) * t + 4 * t * (1 - t) * sag;
         points.push({ x, y, px: x, py: y,
-          radius: kind === "floor" ? 5.2 : kind === "wall" ? 4.5 : 2.6,
+          radius: memberCollisionRadius(kind),
           mass: 0, inverseMass: 0, material });
       }
       points.push(b);
@@ -406,7 +437,7 @@
       const slack = kind === "rope" ? 1.04 : 1;
       const rest = kind === "rope" ? initialArcLength * slack : span;
       const segmentRests = initialSegmentLengths.map(length => length * slack);
-      const sectionFactor = kind === "floor" ? 2.2 : kind === "wall" ? 1.7 : 1;
+      const sectionFactor = memberSectionFactor(kind);
       const memberMass = Math.max(
         0.1,
         profile.density * 1000 * REFERENCE_MEMBER_AREA_M2 * sectionFactor *
@@ -487,7 +518,7 @@
         const y = a.y + (b.y - a.y) * t + 4 * t * (1 - t) * sag;
         points.push({
           x, y, px: x, py: y,
-          radius: kind === "floor" ? 5.2 : kind === "wall" ? 4.5 : 2.6,
+          radius: memberCollisionRadius(kind),
           mass: memberMass / 5,
           inverseMass: 1 / Math.max(0.05, memberMass / 5),
           material: source.material
@@ -903,7 +934,7 @@
       if (clearButton) clearButton.disabled = state.testMode;
       if (materialSelect) materialSelect.disabled = state.testMode;
       document.querySelectorAll("[data-tool]").forEach(button => {
-        const buildOnly = ["node", "member", "rope", "load", "delete", "ladder", "stairs", "elevator", "exit", "floor", "wall"];
+        const buildOnly = ["node", "member", "rope", "load", "delete", "ladder", "stairs", "elevator", "exit", "floor", "wall", "beam", "column", "brace"];
         const testOnly = ["break", "explode", "ignite"];
         button.disabled = (state.testMode && buildOnly.includes(button.dataset.tool)) ||
           (!state.testMode && testOnly.includes(button.dataset.tool));
@@ -963,7 +994,7 @@
         const sagClearance = Math.max(0, state.ground - Math.max(a.y, b.y) - 4);
         const sag = isRope ? Math.min(span * 0.18, sagClearance) : 0;
         const memberMass = Math.max(0.1, member.memberMass || 0.1);
-        const memberRadius = member.kind === "floor" ? 5.2 : member.kind === "wall" ? 4.5 : 2.6;
+        const memberRadius = memberCollisionRadius(member.kind);
         const points = [a];
 
         for (let i = 1; i < 5; i++) {
@@ -1038,6 +1069,98 @@
         x: Math.round(point.x / step) * step,
         y: Math.round(point.y / step) * step
       };
+    }
+
+    function isQuickBuildTool(tool) {
+      return tool === "beam" || tool === "column" || tool === "brace";
+    }
+
+    function quickBuildStart(point) {
+      const node = closestNode(point.x, point.y, 18);
+      return {
+        node,
+        position: node ? { x: node.x, y: node.y } : snappedPoint(point)
+      };
+    }
+
+    function quickBuildEndPoint(draft, point) {
+      const target = snappedPoint(point);
+      const dx = target.x - draft.start.x;
+      const dy = target.y - draft.start.y;
+      let end;
+      if (draft.kind === "beam") {
+        end = { x: target.x, y: draft.start.y };
+      } else if (draft.kind === "column") {
+        end = { x: draft.start.x, y: target.y };
+      } else {
+        // Braces are diagonal members. Preserve the drag direction and make
+        // the longer axis the controlling span for a clean 45-degree brace.
+        if (Math.abs(dx) < 10 || Math.abs(dy) < 10) {
+          return { point: target, node: null, directionValid: false };
+        }
+        const span = Math.max(Math.abs(dx), Math.abs(dy));
+        end = {
+          x: draft.start.x + Math.sign(dx) * span,
+          y: draft.start.y + Math.sign(dy) * span
+        };
+      }
+
+      // Reuse an existing joint when it is close and compatible with the
+      // selected member orientation. This makes quick-built members join
+      // cleanly to previously placed frame members and supports.
+      let bestNode = null, bestDistance = 13;
+      for (const node of state.nodes) {
+        if (node === draft.startNode) continue;
+        const d = distance(end, node);
+        if (d > bestDistance) continue;
+        const nodeDx = node.x - draft.start.x;
+        const nodeDy = node.y - draft.start.y;
+        const compatible = draft.kind === "beam"
+          ? Math.abs(nodeDy) <= 8
+          : draft.kind === "column"
+            ? Math.abs(nodeDx) <= 8
+            : Math.abs(nodeDx) > 8 && Math.abs(nodeDy) > 8 &&
+              Math.abs(Math.abs(nodeDx) - Math.abs(nodeDy)) <= 8;
+        if (compatible) {
+          bestDistance = d;
+          bestNode = node;
+        }
+      }
+      return {
+        point: bestNode ? { x: bestNode.x, y: bestNode.y } : end,
+        node: bestNode,
+        directionValid: true
+      };
+    }
+
+    function updateQuickBuildDraft(draft, point) {
+      if (!draft || !point) return false;
+      const target = quickBuildEndPoint(draft, point);
+      draft.end = target.point;
+      draft.endNode = target.node;
+      const dx = draft.end.x - draft.start.x;
+      const dy = draft.end.y - draft.start.y;
+      const span = Math.hypot(dx, dy);
+      const orientationValid = draft.kind === "beam"
+        ? Math.abs(dy) <= 1 && Math.abs(dx) >= 18
+        : draft.kind === "column"
+          ? Math.abs(dx) <= 1 && Math.abs(dy) >= 18
+          : Math.abs(dx) >= 10 && Math.abs(dy) >= 10 &&
+            Math.abs(Math.abs(dx) - Math.abs(dy)) <= 8;
+      draft.valid = target.directionValid && span >= 18 && orientationValid &&
+        !(draft.endNode && draft.endNode === draft.startNode);
+      return draft.valid;
+    }
+
+    function quickBuildNodeAt(point, preferredNode = null) {
+      if (preferredNode && state.nodes.includes(preferredNode)) return preferredNode;
+      const existing = closestNode(point.x, point.y, 10);
+      if (existing) return existing;
+      const place = snappedPoint(point);
+      const onFloor = place.y >= state.ground - 12;
+      const node = makeNode(place.x, onFloor ? state.ground : place.y, false, onFloor);
+      state.nodes.push(node);
+      return node;
     }
 
     function findPanelSupport(x, y) {
@@ -1173,7 +1296,7 @@
 
     function setTool(tool) {
       state.buildMode=(tool==="floor"||tool==="wall")?"floor":"frame";
-      state.tool=tool;state.firstNode=null;state.firstNavPoint=null;state.panelDraft=null;
+      state.tool=tool;state.firstNode=null;state.firstNavPoint=null;state.panelDraft=null;state.quickBuildDraft=null;
       document.querySelectorAll("[data-tool]").forEach(button => {
         const active = button.dataset.tool === tool;
         button.classList.toggle("selected", active);
@@ -1184,6 +1307,9 @@
         select: "Select nodes or members. Drag a node to reposition it. Right-click a node to pin it.",
         node: "Click and drag anywhere in the scene to place a node precisely. Release to set it down.",
         member: "Click two existing nodes to connect them with a rigid structural member.",
+        beam: "Drag from one point to another. The beam stays horizontal and snaps to nearby frame nodes.",
+        column: "Drag from one point to another. The column stays vertical and snaps to nearby frame nodes.",
+        brace: "Drag diagonally. The brace snaps to a 45-degree line and joins nearby frame nodes.",
         rope: "Click two nodes to connect them with a flexible, tension-only rope.",
         load: "Click in the scene to drop a 220 kg test load.",
         heat: "Heat softens members and expands steel. Tension can permanently stretch or snap an overloaded member.",
@@ -1310,6 +1436,17 @@
       const p = rawPoint;
       if (event.button === 2) return;
       canvas.setPointerCapture(event.pointerId);
+      if(isQuickBuildTool(state.tool)){
+        const start=quickBuildStart(p);
+        state.quickBuildDraft={
+          kind:state.tool,start:start.position,startNode:start.node,
+          end:start.position,endNode:null,valid:false
+        };
+        state.pointer=p;
+        updateQuickBuildDraft(state.quickBuildDraft,p);
+        draw();
+        return;
+      }
       if(state.tool==="floor"||state.tool==="wall"){
         const support=findPanelSupport(p.x,p.y);
         if(!support){notify("Start the drag on an intact frame member (not a rope).");return;}
@@ -1427,6 +1564,7 @@
     canvas.addEventListener("pointermove", event => {
       const p = pointerPosition(event);
       state.pointer=p;
+      if(state.quickBuildDraft){updateQuickBuildDraft(state.quickBuildDraft,p);draw();return;}
       if(state.panelDraft){updatePanelDraft(state.panelDraft,findPanelSupport(p.x,p.y));draw();return;}
       if (state.dragging) {
         const moveTo = snappedPoint(p);
@@ -1437,6 +1575,29 @@
       } else if (state.tool === "heat" && event.buttons === 1) applyHeat(p.x, p.y, 8);
     });
     const endDrag = event => {
+      if(state.quickBuildDraft){
+        const draft=state.quickBuildDraft;
+        const point=event?pointerPosition(event):state.pointer;
+        if(point)updateQuickBuildDraft(draft,point);
+        state.quickBuildDraft=null;
+        if(!draft.valid){
+          notify(draft.kind==="brace"
+            ? "Drag diagonally to place a brace. The preview must reach a valid 45-degree span."
+            : "Drag farther in the required direction to place this member.");
+        }else{
+          const a=quickBuildNodeAt(draft.start,draft.startNode);
+          const b=quickBuildNodeAt(draft.end,draft.endNode);
+          const member=addMember(a,b,state.material,draft.kind);
+          if(member){
+            state.selectedNode=null;state.selectedLoad=null;state.selectedMember=member;
+            const label=draft.kind.charAt(0).toUpperCase()+draft.kind.slice(1);
+            notify("Quick-built "+label.toLowerCase()+". Drag again to add another member.");
+          }else{
+            notify("Those endpoints are too close or already connected by that member type.");
+          }
+        }
+        updateInspector();draw();
+      }
       if(state.panelDraft){
         const draft=state.panelDraft,point=event?pointerPosition(event):state.pointer;
         updatePanelDraft(draft,point?findPanelSupport(point.x,point.y):null);
@@ -1454,7 +1615,7 @@
       state.dragging = null;
     };
     canvas.addEventListener("pointerup", endDrag);
-    canvas.addEventListener("pointercancel",()=>{state.panelDraft=null;state.dragging=null;draw();});
+    canvas.addEventListener("pointercancel",()=>{state.panelDraft=null;state.quickBuildDraft=null;state.dragging=null;draw();});
 
     function applyHeat(x, y, amount) {
       for (const member of state.members) {
@@ -2019,7 +2180,10 @@
             ctx.stroke();
           }
         };
-        ctx.strokeStyle=color;ctx.lineWidth=member.kind==="rope"?2.8:member.kind==="floor"?10:member.kind==="wall"?8:6;ctx.lineCap="round";ctx.lineJoin="round";
+        ctx.strokeStyle=color;
+        ctx.lineWidth=member.kind==="rope"?2.8:member.kind==="floor"?10:member.kind==="wall"?8:
+          member.kind==="column"?7.5:member.kind==="brace"?4.5:6;
+        ctx.lineCap="round";ctx.lineJoin="round";
         traceMember();
         if ((member.temperature>80 || member.ignited) && !member.broken) {
           ctx.strokeStyle=member.ignited?"rgba(255,112,57,.42)":"rgba(255,139,78,.28)";
@@ -2053,6 +2217,17 @@
           if(draft.end){ctx.beginPath();ctx.arc(draft.end.x,draft.end.y,6,0,Math.PI*2);ctx.fill();}
           ctx.restore();
         }
+      }
+      if(state.quickBuildDraft){
+        const draft=state.quickBuildDraft;
+        const endpoint=draft.end||state.pointer||draft.start;
+        ctx.save();ctx.lineCap="round";ctx.lineWidth=draft.kind==="column"?7: draft.kind==="brace"?4.5:6;
+        ctx.strokeStyle=draft.valid?"rgba(83,214,157,.95)":"rgba(235,101,117,.9)";
+        ctx.setLineDash([8,5]);ctx.beginPath();ctx.moveTo(draft.start.x,draft.start.y);
+        ctx.lineTo(endpoint.x,endpoint.y);ctx.stroke();ctx.setLineDash([]);
+        ctx.fillStyle="#69bfea";ctx.beginPath();ctx.arc(draft.start.x,draft.start.y,5.5,0,Math.PI*2);ctx.fill();
+        ctx.beginPath();ctx.arc(endpoint.x,endpoint.y,5.5,0,Math.PI*2);ctx.fill();
+        ctx.restore();
       }
       if(state.tool==="heat" && state.pointer) {
         ctx.strokeStyle="rgba(255,145,91,.5)";ctx.lineWidth=1;ctx.beginPath();ctx.arc(state.pointer.x,state.pointer.y,36,0,Math.PI*2);ctx.stroke();
@@ -2109,7 +2284,7 @@
       if(event.key==="Escape" && currentScreen==="settings"){showScreen(returnScreen);return;}
       if(currentScreen!=="workspace" || event.ctrlKey || event.metaKey || event.altKey) return;
       const shortcuts={"1":"select","2":"node","3":"member","4":"load","5":"heat","6":"delete","7":"break","8":"explode","9":"ignite",
-        "l":"ladder","s":"stairs","e":"elevator","x":"exit","f":"floor","w":"wall"};
+        "b":"beam","c":"column","d":"brace","l":"ladder","s":"stairs","e":"elevator","x":"exit","f":"floor","w":"wall"};
       const shortcut=shortcuts[event.key.toLowerCase()];
       if(shortcut) setTool(shortcut);
       if(event.key.toLowerCase()==="t" && !/INPUT|SELECT|TEXTAREA/.test(event.target.tagName)) setTool("rope");
