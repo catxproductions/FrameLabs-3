@@ -1088,6 +1088,22 @@
       const a=nodeAt(geometry.a),b=nodeAt(geometry.b);
       const member=addMember(a,b,state.material,draft.kind);
       if(!member)return false;
+
+      // Support points are projected onto the frame member. If a projected
+      // point is not already one of that member's endpoint nodes, tie it back
+      // to the nearest endpoint so panel loads have a real path into the frame.
+      const attachToFrame=(support,frameMember)=>{
+        const target=distance(support,frameMember.a)<=distance(support,frameMember.b)
+          ?frameMember.a:frameMember.b;
+        if(support!==target && distance(support,target)>2)
+          addMember(support,target,state.material,"beam");
+      };
+      attachToFrame(startSupport,draft.start.member);
+      attachToFrame(endSupport,draft.end.member);
+
+      // Keep the panel edge level/plumb while retaining its snapped support
+      // points. Short structural links transfer loads between the frame and
+      // the aligned panel endpoints.
       if(startSupport!==a && distance(startSupport,a)>2)
         addMember(startSupport,a,state.material,"beam");
       if(endSupport!==b && distance(endSupport,b)>2)
