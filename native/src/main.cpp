@@ -141,7 +141,7 @@ void drawWorld(const StructuralWorld&w,App&a){
  if(a.firstNode)for(const auto&n:w.nodes())if(n.id==a.firstNode){Vector2 p=worldToScreen(n.position,a);DrawCircleLines((int)p.x,(int)p.y,17,Purple);}
  EndScissorMode();
  DrawRectangle(14,Top+14,205,28,Color{8,8,18,230});DrawRectangleLines(14,Top+14,205,28,Line);DrawCircle(28,Top+28,4,a.paused?Color{237,173,99,255}:Color{105,196,157,255});DrawText(a.paused?"SIMULATION PAUSED":"LIVE STRUCTURAL PHYSICS",40,Top+22,9,Text);
- DrawText("GRID SCALE: 5 FT² / CELL · 2.236 FT SIDE",235,Top+23,9,Muted);
+ DrawText("GRID SCALE: 25 FT × 25 FT / CELL",235,Top+23,9,Muted);
  DrawRectangle(14,GetScreenHeight()-42,vw-28,27,Color{8,8,18,220});DrawRectangleLines(14,GetScreenHeight()-42,vw-28,27,Line);DrawText(a.status.c_str(),25,GetScreenHeight()-34,9,Muted);
 }
 void drawSidebar(StructuralWorld&w,App&a){

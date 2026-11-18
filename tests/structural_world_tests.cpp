@@ -166,12 +166,14 @@ void separateStructuralMembersCollide() {
 }
 
 void gridCellHasTheConfiguredPhysicalArea() {
-    require(std::fabs(GridCellAreaSquareFeet - 5.0f) < 1e-6f,
-            "one grid cell should represent exactly five square feet");
+    require(std::fabs(GridCellAreaSquareFeet - 625.0f) < 1e-6f,
+            "one grid cell should represent 625 square feet");
+    require(std::fabs(GridCellSideFeet - 25.0f) < 1e-6f,
+            "one grid cell should be 25 feet per side");
     require(std::fabs(GridCellSideFeet * GridCellSideFeet - GridCellAreaSquareFeet) < 1e-5f,
-            "grid cell side length does not match its area");
+            "grid side length does not match its area");
     require(std::fabs(MetersPerWorldUnit - GridCellSideFeet * 0.3048f) < 1e-6f,
-            "native world-unit conversion is inconsistent with the grid scale");
+            "native unit conversion is inconsistent with the grid scale");
 }
 
 void ropeSagsAndActsAsATensionOnlyMember() {
@@ -225,7 +227,11 @@ void severeTensileImpulseFracturesSteel() {
     const NodeId pulled = world.addNode({6.0f, 5.0f}, false);
     const MemberId steel = world.addMember(fixed, pulled, MaterialKind::Steel);
     require(steel != 0, "failed to create tensile test member");
-    require(world.applyNodeImpulse(pulled, {60.0f, 0.0f}),
+    // Keep the test's initial physical velocity comparable to the former
+    // 2.236 ft world-unit calibration after increasing each unit to 25 ft.
+    const float previousWorldUnitFeet = 2.2360679775f;
+    const float scaleRatio = GridCellSideFeet / previousWorldUnitFeet;
+    require(world.applyNodeImpulse(pulled, {60.0f * scaleRatio, 0.0f}),
             "failed to apply tensile impulse to free endpoint");
 
     for (int i = 0; i < 4 && world.brokenMemberCount() == 0; ++i) {
