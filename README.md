@@ -48,6 +48,16 @@ Heat raises member temperature, reduces effective bending stiffness, and lowers 
 
 These are stylized game units. They are not structural engineering measurements or safe design recommendations.
 
+## Quick Build
+
+Frame Mode includes three drag-to-place structural tools:
+
+- **Beam (B):** places a horizontal member.
+- **Column (C):** places a vertical member.
+- **Brace (D):** places a diagonal member aligned to 45 degrees.
+
+Drag from an existing node or an open point to the destination. Nearby compatible nodes are reused, and new endpoints are added to the structure automatically. The member uses the currently selected material and participates in the same physics, collision, stress, and failure systems as other structural members. These quick-build tools are currently part of the browser preview.
+
 ## Building modes
 
 - **Frame Mode** preserves the existing frame construction tools.
