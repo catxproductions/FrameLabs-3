@@ -330,7 +330,7 @@ int main(){
   BeginDrawing();ClearBackground(BG);
   if(app.screen==Screen::Menu)drawMenu(app);else if(app.screen==Screen::Settings)drawSettings(app);else{
    DrawRectangle(0,0,GetScreenWidth(),Top,BG);DrawLine(0,Top-1,GetScreenWidth(),Top-1,Line);brand();
-   DrawText("2D STRUCTURAL SIMULATION",GetScreenWidth()-Side-220,22,9,Muted);
+   DrawText("2D STRUCTURAL SIMULATION",GetScreenWidth()-Side-470,22,9,Muted);
    if(button({static_cast<float>(GetScreenWidth()-Side-245),10,105,36},"Save Build")){app.namingBuild=true;app.buildName="My Build";}
    if(button({static_cast<float>(GetScreenWidth()-Side-130),10,115,36},"Load Latest")){app.status=loadLatestBuild(world,app)?"Latest saved build loaded":"No valid saved build found";}
    drawWorld(world,app);drawSidebar(world,app);
