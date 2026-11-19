@@ -13,10 +13,12 @@ FL3 is **not** a 3D block sandbox. The game world is two-dimensional and structu
 - Pinned supports: right-click a node to pin or release it.
 - Dynamic test loads that apply weight to structures.
 - Member deformation using subdivided particles and position-based constraints.
-- Structural member failure: failed members lose their constraints and their pieces continue moving as debris.
-- Material selection for steel, wood, composite, and concrete.
+- Structural member failure: failed members lose their constraints, continue moving as debris, and collide with intact members and other debris.
+- Separate native Break and Delete tools: Break releases moving fragments; Delete removes a member without leaving debris.
+- Material selection for steel, wood, composite, explosive composite, flammable composite, and concrete.
 - Stress visualization, selection, pause, reset, zoom, and viewport panning.
-- Localized heat brush that raises member temperature and changes material response.
+- Localized heat brush, ignition, explosion impulses, and native dust, sparks, flame, and smoke particles.
+- Quick Build beam/column/brace tools, Floor and Wall construction tools, exit markers, and named native build saves.
 - Structural navigation assemblies: ladders, stairs, and elevator shafts attach to supporting nodes or member segments, follow their motion, and become gravity-driven rigid falling assemblies when their support fails.
 
 ### Physical grid scale
