@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <cmath>
 #include <string>
+#include <vector>
 
 namespace {
 using namespace framelabs;
@@ -21,12 +22,14 @@ constexpr int W=1600,H=900,Top=58,Side=300;
 const Color BG{8,8,17,255},Panel{12,12,25,255},Panel2{20,20,39,255},Line{55,53,86,255};
 const Color Purple{125,121,207,255},Lilac{197,193,248,255},Text{229,226,250,255},Muted{139,136,171,255};
 enum class Screen{Menu,Game,Settings};
-enum class Tool{Select,Node,Member,Rope,Load,Heat,Explode,Ignite,Ladder,Stairs,Elevator};
+enum class Tool{Select,Node,Member,Rope,Load,Heat,Explode,Ignite,Ladder,Stairs,Elevator,QuickBeam,QuickColumn,QuickBrace,Floor,Wall,Break,Delete,Exit};
 struct App{
  Screen screen=Screen::Menu; Tool tool=Tool::Select; MaterialKind material=MaterialKind::Steel;
  bool paused=false,stress=true; float zoom=1; Vector2 pan{0,0};
  NodeId firstNode=0,selectedNode=0; MemberId selectedMember=0;
  bool hasFirstConnectorPoint=false; Vec2 firstConnectorPoint{};
+ bool quickBuildDragging=false; Vec2 quickBuildStart{},quickBuildEnd{};
+ std::vector<Vec2> exits;
  std::string status="Ready — build a structure";
 };
 float clampf(float x,float a,float b){return std::max(a,std::min(b,x));}
@@ -137,6 +140,8 @@ void drawWorld(const StructuralWorld&w,App&a){
   if(m.id==a.selectedMember){DrawCircleV(worldToScreen(m.start,a),10,Lilac);DrawCircleV(worldToScreen(m.end,a),10,Lilac);}
  }
  for(const auto&l:w.loads()){Vector2 p=worldToScreen(l.position,a);DrawCircleV(p,l.radius*step,Color{236,173,99,255});DrawCircleLines((int)p.x,(int)p.y,(int)(l.radius*step),Text);DrawText(TextFormat("%.0f kg",l.massKg),(int)p.x+18,(int)p.y-8,10,Text);}
+ for(const auto& e:a.exits){Vector2 p=worldToScreen(e,a);DrawCircleV(p,8,Color{105,196,157,255});DrawCircleLines((int)p.x,(int)p.y,13,Text);DrawText("EXIT",(int)p.x+11,(int)p.y-5,8,Color{145,220,180,255});}
+ if(a.quickBuildDragging){Vector2 p0=worldToScreen(a.quickBuildStart,a),p1=worldToScreen(a.quickBuildEnd,a);DrawLineEx(p0,p1,5,Purple);DrawCircleV(p0,5,Lilac);DrawCircleV(p1,5,Lilac);}
  for(const auto&n:w.nodes()){Vector2 p=worldToScreen(n.position,a);Color c=n.pinned?Color{244,192,105,255}:Color{210,208,242,255};DrawCircleV(p,n.id==a.selectedNode?10:6,c);DrawCircleLines((int)p.x,(int)p.y,n.id==a.selectedNode?14:9,Color{30,29,54,255});}
  if(a.firstNode)for(const auto&n:w.nodes())if(n.id==a.firstNode){Vector2 p=worldToScreen(n.position,a);DrawCircleLines((int)p.x,(int)p.y,17,Purple);}
  EndScissorMode();
@@ -149,22 +154,22 @@ void drawSidebar(StructuralWorld&w,App&a){
  const bool compact=height<850;
  DrawRectangle(x,Top,Side,height-Top,Panel);DrawLine(x,Top,x,height,Line);
  DrawText("STRUCTURAL LAB",x+20,80,9,Purple);DrawText("Toolbox",x+20,101,26,Text);DrawLine(x+18,140,x+Side-18,140,Line);DrawText("TOOLS",x+20,158,9,Muted);
- const char* names[]={"Select","Add node","Connect","Rope","Add load","Heat","Explode","Ignite","Ladder","Stairs","Elevator"};
- Tool tools[]={Tool::Select,Tool::Node,Tool::Member,Tool::Rope,Tool::Load,Tool::Heat,Tool::Explode,Tool::Ignite,Tool::Ladder,Tool::Stairs,Tool::Elevator};
+ const char* names[]={"Select","Add node","Connect","Rope","Add load","Heat","Explode","Ignite","Ladder","Stairs","Elevator","Beam","Column","Brace","Floor","Wall","Break","Delete","Exit"};
+ Tool tools[]={Tool::Select,Tool::Node,Tool::Member,Tool::Rope,Tool::Load,Tool::Heat,Tool::Explode,Tool::Ignite,Tool::Ladder,Tool::Stairs,Tool::Elevator,Tool::QuickBeam,Tool::QuickColumn,Tool::QuickBrace,Tool::Floor,Tool::Wall,Tool::Break,Tool::Delete,Tool::Exit};
  const float toolStart=compact?160.0f:180.0f,toolStep=compact?31.0f:37.0f,toolHeight=compact?27.0f:32.0f;
- const float toolWidth=(Side-48.0f)/2.0f;
- for(int i=0;i<11;i++){
-  const float bx=static_cast<float>(x+18)+(i%2)*(toolWidth+12.0f);
-  const float by=toolStart+(i/2)*toolStep;
+ const float toolWidth=(Side-60.0f)/3.0f;
+ for(int i=0;i<19;i++){
+  const float bx=static_cast<float>(x+18)+(i%3)*(toolWidth+6.0f);
+  const float by=toolStart+(i/3)*toolStep;
   if(button({bx,by,toolWidth,toolHeight},names[i],a.tool==tools[i])){
-   a.tool=tools[i];a.firstNode=0;a.hasFirstConnectorPoint=false;a.status=std::string(names[i])+" selected";
+   a.tool=tools[i];a.firstNode=0;a.hasFirstConnectorPoint=false;a.quickBuildDragging=false;a.status=std::string(names[i])+" selected";
   }
  }
- const float materialLine=compact?382.0f:445.0f,materialTitle=compact?395.0f:461.0f,materialStart=compact?414.0f:482.0f,materialStep=compact?30.0f:35.0f,materialHeight=compact?25.0f:28.0f;
+ const float materialLine=compact?398.0f:457.0f,materialTitle=compact?411.0f:473.0f,materialStart=compact?430.0f:494.0f,materialStep=compact?27.0f:31.0f,materialHeight=compact?23.0f:25.0f;
  DrawLine(x+18,materialLine,x+Side-18,materialLine,Line);DrawText("MATERIAL",x+20,(int)materialTitle,9,Muted);
  MaterialKind mats[]={MaterialKind::Steel,MaterialKind::Wood,MaterialKind::ExplosiveComposite,MaterialKind::FlammableComposite,MaterialKind::Concrete};
  for(int i=0;i<5;i++){float bx=x+18+(i%2)*130,by=materialStart+(i/2)*materialStep;if(button({bx,by,122,materialHeight},materialName(mats[i]),a.material==mats[i]))a.material=mats[i];}
- const float simulationLine=compact?508.0f:590.0f,simulationTitle=compact?521.0f:606.0f,simulationStart=compact?540.0f:625.0f,simulationStep=compact?26.0f:31.0f,simulationHeight=compact?23.0f:26.0f;
+ const float simulationLine=compact?522.0f:600.0f,simulationTitle=compact?535.0f:613.0f,simulationStart=compact?554.0f:632.0f,simulationStep=compact?24.0f:29.0f,simulationHeight=compact?21.0f:24.0f;
  DrawLine(x+18,simulationLine,x+Side-18,simulationLine,Line);DrawText("SIMULATION",x+20,(int)simulationTitle,9,Muted);
  if(button({(float)x+18,simulationStart,Side-36.0f,simulationHeight},a.paused?"Resume":"Pause"))a.paused=!a.paused;
  if(button({(float)x+18,simulationStart+simulationStep,Side-36.0f,simulationHeight},"Reset experiment")){w.resetDemo();a.selectedNode=0;a.selectedMember=0;a.firstNode=0;}
@@ -199,15 +204,39 @@ void input(StructuralWorld&w,App&a){
  if(IsKeyPressed(KEY_L))chooseTool(Tool::Ladder);
  if(IsKeyPressed(KEY_S))chooseTool(Tool::Stairs);
  if(IsKeyPressed(KEY_V))chooseTool(Tool::Elevator);
+ if(IsKeyPressed(KEY_B))chooseTool(Tool::QuickBeam);
+ if(IsKeyPressed(KEY_C))chooseTool(Tool::QuickColumn);
+ if(IsKeyPressed(KEY_D))chooseTool(Tool::QuickBrace);
+ if(IsKeyPressed(KEY_F))chooseTool(Tool::Floor);
+ if(IsKeyPressed(KEY_W))chooseTool(Tool::Wall);
+ if(IsKeyPressed(KEY_K))chooseTool(Tool::Break);
  if(mouse.x>GetScreenWidth()-Side||mouse.y<Top)return;
  if(IsMouseButtonDown(MOUSE_BUTTON_MIDDLE)){Vector2 d=GetMouseDelta();a.pan.x+=d.x;a.pan.y+=d.y;}
  float wheel=GetMouseWheelMove();if(wheel!=0&&inView(mouse))a.zoom=clampf(a.zoom+wheel*.08f,.45f,2.4f);
  if(a.tool==Tool::Heat&&IsMouseButtonDown(MOUSE_BUTTON_LEFT)&&inView(mouse)){w.applyHeat(screenToWorld(mouse,a),1.7f,520,GetFrameTime());return;}
+ if(a.tool==Tool::QuickBeam||a.tool==Tool::QuickColumn||a.tool==Tool::QuickBrace){
+  if(IsMouseButtonPressed(MOUSE_BUTTON_LEFT)&&inView(mouse)){a.quickBuildDragging=true;a.quickBuildStart=screenToWorld(mouse,a);a.quickBuildEnd=a.quickBuildStart;}
+  if(a.quickBuildDragging&&IsMouseButtonDown(MOUSE_BUTTON_LEFT)&&inView(mouse))a.quickBuildEnd=screenToWorld(mouse,a);
+  if(a.quickBuildDragging&&IsMouseButtonReleased(MOUSE_BUTTON_LEFT)){
+   Vec2 p0=a.quickBuildStart,p1=screenToWorld(mouse,a);a.quickBuildDragging=false;
+   if(a.tool==Tool::QuickBeam)p1.y=p0.y;
+   else if(a.tool==Tool::QuickColumn)p1.x=p0.x;
+   else {float dx=p1.x-p0.x,dy=p1.y-p0.y;float span=std::max(std::fabs(dx),std::fabs(dy));p1.x=p0.x+(dx<0?-span:span);p1.y=p0.y+(dy<0?-span:span);}
+   NodeId n0=w.findNodeNear(p0,.38f);if(!n0)n0=w.addNode(p0,false);
+   NodeId n1=w.findNodeNear(p1,.38f);if(!n1)n1=w.addNode(p1,false);
+   const MemberRole role=a.tool==Tool::QuickColumn?MemberRole::Column:a.tool==Tool::QuickBrace?MemberRole::Brace:MemberRole::Beam;
+   MemberId id=w.addMember(n0,n1,a.material,role);a.selectedMember=id;a.status=id?"Quick-built "+std::string(a.tool==Tool::QuickColumn?"column":a.tool==Tool::QuickBrace?"brace":"beam"):"Quick Build needs a longer drag";return;
+  }
+  if(a.quickBuildDragging)return;
+ }
  if(a.tool==Tool::Ignite&&IsMouseButtonDown(MOUSE_BUTTON_LEFT)&&inView(mouse)){w.ignite(screenToWorld(mouse,a),.55f);return;}
  if(IsMouseButtonPressed(MOUSE_BUTTON_RIGHT)&&inView(mouse)){NodeId n=w.findNodeNear(screenToWorld(mouse,a),.28f);if(n)w.toggleNodePin(n);return;}
  if(!IsMouseButtonPressed(MOUSE_BUTTON_LEFT)||!inView(mouse))return;
  Vec2 p=screenToWorld(mouse,a);
  if(a.tool==Tool::Node){a.selectedNode=w.addNode(p,false);a.status="Node added";return;}
+ if(a.tool==Tool::Exit){a.exits.push_back(p);a.status="Evacuation exit marker placed";return;}
+ if(a.tool==Tool::Break||a.tool==Tool::Delete){MemberId target=w.findMemberNear(p,.30f);if(target){w.removeMember(target);a.status=a.tool==Tool::Break?"Member fractured — fragments released":"Member deleted";if(a.selectedMember==target)a.selectedMember=0;}else{NodeId node=w.findNodeNear(p,.28f);if(node){w.removeNode(node);a.status="Node deleted";}else{auto load=w.findLoadNear(p,.4f);if(load){w.removeLoad(load);a.status="Load deleted";}else a.status="Nothing to remove here";}}return;}
+ if(a.tool==Tool::Floor||a.tool==Tool::Wall){NodeId n=w.findNodeNear(p,.34f);if(!n){a.status="Floor/Wall mode: click existing frame nodes";return;}if(!a.firstNode){a.firstNode=n;a.status="First support selected — click the opposite support";return;}Vec2 start{},end{};w.getNodePosition(a.firstNode,start);w.getNodePosition(n,end);if(a.tool==Tool::Floor){Vec2 aligned{end.x,start.y};NodeId panelEnd=w.addNode(aligned,false);w.addMember(n,panelEnd,a.material,MemberRole::Column);MemberId panel=w.addMember(a.firstNode,panelEnd,a.material,MemberRole::Slab);a.selectedMember=panel;a.status=panel?"Floor panel snapped level and connected":"Could not create floor panel";}else{Vec2 aligned{start.x,end.y};NodeId panelEnd=w.addNode(aligned,false);w.addMember(n,panelEnd,a.material,MemberRole::Beam);MemberId panel=w.addMember(a.firstNode,panelEnd,a.material,MemberRole::Wall);a.selectedMember=panel;a.status=panel?"Wall panel snapped plumb and connected":"Could not create wall panel";}a.firstNode=0;return;}
  if(a.tool==Tool::Member||a.tool==Tool::Rope){
   NodeId n=w.findNodeNear(p,.35f);
   if(!n){a.status="Connect by clicking two nodes";return;}
