@@ -85,6 +85,7 @@ struct MemberData {
     float peakTensileStrain=0;
     bool broken=false;
     bool ignited=false;
+    bool hidden=false;
 };
 struct NodeData { NodeId id=0; std::size_t particle=0; bool removed=false; };
 struct LoadData { LoadView view{}; Vec2 velocity{}; };
@@ -505,6 +506,17 @@ struct StructuralWorld::Impl {
         }
     }
 
+    void rebuildNodeMasses() {
+        for(auto& node:nodes)if(!node.removed){auto& particle=particles[node.particle];particle.mass=0.5f;}
+        for(const auto& member:memberData)if(!member.broken&&!member.hidden){
+            const float memberMass=std::max(0.1f,materialProfile(member.material).density*1000.0f*
+                ReferenceMemberAreaM2*MetersPerWorldUnit*member.restLength);
+            const float endpointMass=memberMass/(2.0f*MemberSubdivisions);
+            if(auto* a=particleFor(member.a))a->mass+=endpointMass;
+            if(auto* b=particleFor(member.b))b->mass+=endpointMass;
+        }
+        for(auto& node:nodes)if(!node.removed){auto& particle=particles[node.particle];particle.inverseMass=particle.pinned?0.0f:1.0f/std::max(0.05f,particle.mass);}
+    }
     void rebuildViews() {
         nodeViews.clear();
         for(const auto& n:nodes) {
@@ -514,6 +526,7 @@ struct StructuralWorld::Impl {
         }
         memberViews.clear();
         for(const auto& m:memberData) {
+            if(m.hidden) continue;
             // Keep fractured members visible as separated debris segments.
             const auto* a=particleFor(m.a); const auto* b=particleFor(m.b);
             if(!a||!b) continue;
@@ -701,6 +714,12 @@ MemberId StructuralWorld::addMember(NodeId a,NodeId b,MaterialKind material,Memb
 }
 bool StructuralWorld::removeMember(MemberId id) {
     auto* m=impl_->memberFor(id);if(!m)return false;m->broken=true;impl_->rebuildViews();return true;
+}
+bool StructuralWorld::deleteMember(MemberId id) {
+    auto* m=impl_->memberFor(id);if(!m||m->hidden)return false;
+    m->broken=true;m->hidden=true;
+    for(std::size_t i=1;i+1<m->particles.size();++i){auto& p=impl_->particles[m->particles[i]];p.pinned=true;p.inverseMass=0.0f;p.previous=p.p;}
+    impl_->rebuildNodeMasses();impl_->rebuildViews();return true;
 }
 MemberId StructuralWorld::findMemberNear(Vec2 p,float radius) const {
     MemberId best=0;float bestD=radius;
@@ -1004,7 +1023,7 @@ const std::vector<MemberView>& StructuralWorld::members()const noexcept{return i
 const std::vector<LoadView>& StructuralWorld::loads()const noexcept{return impl_->loadViews;}
 std::size_t StructuralWorld::nodeCount()const noexcept{return static_cast<std::size_t>(std::count_if(impl_->nodes.begin(),impl_->nodes.end(),[](const NodeData& n){return !n.removed;}));}
 std::size_t StructuralWorld::memberCount()const noexcept{return impl_->memberViews.size();}
-std::size_t StructuralWorld::brokenMemberCount()const noexcept{std::size_t n=0;for(const auto&m:impl_->memberData)if(m.broken)++n;return n;}
+std::size_t StructuralWorld::brokenMemberCount()const noexcept{std::size_t n=0;for(const auto&m:impl_->memberData)if(m.broken&&!m.hidden)++n;return n;}
 std::size_t StructuralWorld::bodyCount()const noexcept{return impl_->particles.size()+impl_->loadData.size();}
 float StructuralWorld::simulationTime()const noexcept{return impl_->time;}
 int StructuralWorld::workerCount()const noexcept{return impl_->workers;}
