@@ -86,7 +86,7 @@ struct MemberData {
     bool broken=false;
     bool ignited=false;
 };
-struct NodeData { NodeId id=0; std::size_t particle=0; };
+struct NodeData { NodeId id=0; std::size_t particle=0; bool removed=false; };
 struct LoadData { LoadView view{}; Vec2 velocity{}; };
 
 enum class ConnectorAnchorKind : std::uint8_t { None, Node, Member };
@@ -330,11 +330,11 @@ struct StructuralWorld::Impl {
         workers=static_cast<int>(std::max(1u,hc));
     }
     Particle* particleFor(NodeId id) {
-        for(auto& n:nodes) if(n.id==id) return &particles[n.particle];
+        for(auto& n:nodes) if(n.id==id && !n.removed) return &particles[n.particle];
         return nullptr;
     }
     const Particle* particleFor(NodeId id) const {
-        for(const auto& n:nodes) if(n.id==id) return &particles[n.particle];
+        for(const auto& n:nodes) if(n.id==id && !n.removed) return &particles[n.particle];
         return nullptr;
     }
     MemberData* memberFor(MemberId id) {
@@ -345,6 +345,7 @@ struct StructuralWorld::Impl {
         ConnectorAnchor result{};
         float nearestNode = 0.36f;
         for (const auto& node : nodes) {
+            if (node.removed) continue;
             const Vec2 position = particles[node.particle].p;
             const float d = distance(point, position);
             if (d < nearestNode) {
@@ -507,6 +508,7 @@ struct StructuralWorld::Impl {
     void rebuildViews() {
         nodeViews.clear();
         for(const auto& n:nodes) {
+            if(n.removed) continue;
             const auto& p=particles[n.particle];
             nodeViews.push_back({n.id,p.p,p.pinned});
         }
@@ -531,7 +533,7 @@ struct StructuralWorld::Impl {
             v.maxBendRadians=m.bend; v.yielding=m.stress>.72f; v.broken=m.broken; v.ignited=m.ignited;
             const auto& profile=materialProfile(m.material);
             const float thickness = m.role == MemberRole::Rope ? 0.05f :
-                (m.role == MemberRole::Slab ? 0.22f : 0.14f);
+                ((m.role == MemberRole::Slab || m.role == MemberRole::Wall) ? 0.22f : 0.14f);
             for(std::size_t i=1;i<m.particles.size();++i) {
                 Vec2 p0=particles[m.particles[i-1]].p, p1=particles[m.particles[i]].p;
                 Vec2 d=sub(p1,p0);
@@ -573,14 +575,47 @@ NodeId StructuralWorld::addNode(Vec2 p,bool pinned) {
 }
 NodeId StructuralWorld::findNodeNear(Vec2 p,float radius) const {
     NodeId best=0; float bestD=radius;
-    for(const auto& n:impl_->nodes) { float d=distance(impl_->particles[n.particle].p,p); if(d<=bestD){bestD=d;best=n.id;} }
+    for(const auto& n:impl_->nodes) { if(n.removed) continue; float d=distance(impl_->particles[n.particle].p,p); if(d<=bestD){bestD=d;best=n.id;} }
     return best;
 }
 bool StructuralWorld::toggleNodePin(NodeId id) {
-    for(auto& n:impl_->nodes) if(n.id==id) {
+    for(auto& n:impl_->nodes) if(n.id==id && !n.removed) {
         auto& p=impl_->particles[n.particle]; p.pinned=!p.pinned; p.inverseMass=p.pinned?0.0f:1.0f/std::max(0.05f,p.mass); p.previous=p.p;
         impl_->rebuildViews(); return true;
     } return false;
+}
+bool StructuralWorld::moveNode(NodeId id, Vec2 position) {
+    if (!std::isfinite(position.x) || !std::isfinite(position.y)) return false;
+    for (auto& node : impl_->nodes) {
+        if (node.id != id || node.removed) continue;
+        auto& particle = impl_->particles[node.particle];
+        if (particle.inverseMass <= 0.0f) return false;
+        if (position.y <= particle.radius + 0.005f) {
+            position.y = particle.radius;
+            particle.pinned = true;
+            particle.inverseMass = 0.0f;
+        }
+        particle.p = position;
+        particle.previous = position;
+        impl_->rebuildViews();
+        return true;
+    }
+    return false;
+}
+bool StructuralWorld::removeNode(NodeId id) {
+    for (auto& node : impl_->nodes) {
+        if (node.id != id || node.removed) continue;
+        node.removed = true;
+        auto& particle = impl_->particles[node.particle];
+        particle.pinned = true;
+        particle.inverseMass = 0.0f;
+        for (auto& member : impl_->memberData) {
+            if (member.a == id || member.b == id) member.broken = true;
+        }
+        impl_->rebuildViews();
+        return true;
+    }
+    return false;
 }
 bool StructuralWorld::getNodePosition(NodeId id,Vec2& out) const {
     const auto* p=impl_->particleFor(id); if(!p)return false; out=p->p; return true;
@@ -967,7 +1002,7 @@ void StructuralWorld::step(float dt) {
 const std::vector<NodeView>& StructuralWorld::nodes()const noexcept{return impl_->nodeViews;}
 const std::vector<MemberView>& StructuralWorld::members()const noexcept{return impl_->memberViews;}
 const std::vector<LoadView>& StructuralWorld::loads()const noexcept{return impl_->loadViews;}
-std::size_t StructuralWorld::nodeCount()const noexcept{return impl_->nodes.size();}
+std::size_t StructuralWorld::nodeCount()const noexcept{return static_cast<std::size_t>(std::count_if(impl_->nodes.begin(),impl_->nodes.end(),[](const NodeData& n){return !n.removed;}));}
 std::size_t StructuralWorld::memberCount()const noexcept{return impl_->memberViews.size();}
 std::size_t StructuralWorld::brokenMemberCount()const noexcept{std::size_t n=0;for(const auto&m:impl_->memberData)if(m.broken)++n;return n;}
 std::size_t StructuralWorld::bodyCount()const noexcept{return impl_->particles.size()+impl_->loadData.size();}
