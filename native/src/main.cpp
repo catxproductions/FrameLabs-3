@@ -226,13 +226,13 @@ void drawSidebar(StructuralWorld&w,App&a){
  if(compact){
   DrawText(TextFormat("%i nodes / %i members",(int)w.nodeCount(),(int)w.memberCount()),x+20,height-52,9,Text);
   DrawText(TextFormat("%i failed members",(int)w.brokenMemberCount()),x+20,height-36,8,Color{232,143,116,255});
-  DrawText(TextFormat("%i connectors / %i falling  ·  GRID 5 FT²/CELL",
+  DrawText(TextFormat("%i connectors / %i falling  ·  GRID 25 FT × 25 FT/CELL",
    (int)w.connectorCount(),(int)w.fallingConnectorCount()),x+20,height-17,7,Muted);
  }else{
   DrawText(TextFormat("%i nodes  /  %i members",(int)w.nodeCount(),(int)w.memberCount()),x+20,746,11,Text);
   DrawText(TextFormat("%i failed members",(int)w.brokenMemberCount()),x+20,768,10,Color{232,143,116,255});
   DrawText(TextFormat("%i connectors  /  %i falling",(int)w.connectorCount(),(int)w.fallingConnectorCount()),x+20,785,8,Muted);
-  DrawText("GRID SCALE / 5 FT² PER CELL",x+20,height-44,8,Muted);
+  DrawText("GRID SCALE / 25 FT × 25 FT",x+20,height-44,8,Muted);
  }
 }
 void input(StructuralWorld&w,App&a){
