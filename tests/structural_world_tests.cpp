@@ -317,6 +317,20 @@ void unanchoredNativeConnectorsFall() {
             "unanchored connector remained suspended");
 }
 
+void deletedMembersAreRemovedWithoutCreatingDebris() {
+    StructuralWorld world;
+    world.clear();
+    const NodeId a = world.addNode({2.0f, 3.0f}, false);
+    const NodeId b = world.addNode({5.0f, 3.0f}, false);
+    const MemberId member = world.addMember(a, b, MaterialKind::Steel, MemberRole::Beam);
+    require(member != 0 && world.memberCount() == 1, "failed to create member for deletion test");
+    require(world.deleteMember(member), "deleteMember rejected a valid member");
+    require(world.memberCount() == 0, "deleted member remained visible in the world");
+    require(world.brokenMemberCount() == 0, "deleted member was incorrectly counted as fractured debris");
+    for (int i = 0; i < 30; ++i) world.step(1.0f / 120.0f);
+    require(world.memberCount() == 0, "deleted member reappeared after simulation steps");
+}
+
 void longSimulationMaintainsFiniteState() {
     StructuralWorld world;
     for (int i = 0; i < 1200; ++i) world.step(1.0f / 120.0f);
@@ -369,6 +383,7 @@ int main() {
     run("fixed-step determinism across render-step grouping", fixedSubstepsAreIndependentOfRenderStepGrouping);
     run("native stairs and elevator shafts follow supports and collapse", nativeStairsAndElevatorShaftsFollowSupportsAndFallAfterFailure);
     run("unanchored native connectors fall under gravity", unanchoredNativeConnectorsFall);
+    run("native Delete removes members without leaving debris", deletedMembersAreRemovedWithoutCreatingDebris);
     run("finite state during extended simulation", longSimulationMaintainsFiniteState);
 
     if (failures != 0) {
