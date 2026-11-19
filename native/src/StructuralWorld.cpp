@@ -898,6 +898,24 @@ void StructuralWorld::step(float dt) {
             }
         }
     }
+    // Like the browser solver, detect tensile failure before any positional
+    // projection can hide an overload by pulling the member back to rest length.
+    for(auto& m:w.memberData)if(!m.broken){
+        const auto& profile=materialProfile(m.material);
+        const float heat=clampf((m.temperature-20.0f)/700.0f,0.0f,1.0f);
+        const float heatStrength=clampf(1.0f-profile.heatWeakening*heat,0.08f,1.0f);
+        const float integrity=std::max(0.05f,1.0f-m.damage);
+        const float tensileCapacity=std::max(0.012f,profile.breakStrain*heatStrength*integrity);
+        const float restScale=thermalScaleFor(m.material,m.temperature)*(1.0f+m.plasticStrain);
+        for(const auto& constraint:m.axial){
+            const auto& a=w.particles[constraint.a];const auto& b=w.particles[constraint.b];
+            const float current=distance(a.p,b.p);
+            const float rest=std::max(0.001f,constraint.rest*restScale);
+            const float strain=std::max(0.0f,(current-rest)/rest);
+            m.peakTensileStrain=std::max(m.peakTensileStrain,strain);
+            if(strain>tensileCapacity){m.broken=true;break;}
+        }
+    }
     for(int iteration=0;iteration<SolverIterations;++iteration){
         for(auto& m:w.memberData)if(!m.broken){
             const auto& profile=materialProfile(m.material);
@@ -909,14 +927,19 @@ void StructuralWorld::step(float dt) {
             const float axialGain=1.0f-std::pow(1.0f-axialTarget,1.0f/SolverIterations);
             const float bendTarget=clampf(profile.bendingStiffness*stiffness,.05f,.999f);
             const float bendGain=1.0f-std::pow(1.0f-bendTarget,1.0f/SolverIterations);
+            const float heatStrength=clampf(1.0f-profile.heatWeakening*heat,.08f,1.0f);
+            const float integrity=std::max(0.05f,1.0f-m.damage);
+            const float tensileCapacity=std::max(0.012f,profile.breakStrain*heatStrength*integrity);
+            bool releasedDuringSolve=false;
             for(const auto& c:m.axial){
                 auto& a=w.particles[c.a];auto& b=w.particles[c.b];
                 Vec2 d=sub(b.p,a.p);float len=length(d);if(len<1e-6f)continue;
                 const float targetRest=c.rest*effectiveRestScale;
-                // Record tensile extension before positional correction. Otherwise
-                // the constraint solver erases the evidence before failure is checked.
+                // Capture peak tensile strain before correction, and release the
+                // complete member immediately when its material capacity is crossed.
                 const float tensileStrain=std::max(0.0f,(len-targetRest)/std::max(.001f,targetRest));
                 m.peakTensileStrain=std::max(m.peakTensileStrain,tensileStrain);
+                if(tensileStrain>tensileCapacity){m.broken=true;releasedDuringSolve=true;break;}
                 // Ropes are tension-only: compressed segments remain slack.
                 if(m.role==MemberRole::Rope && len<=targetRest) continue;
                 float wa=a.inverseMass,wb=b.inverseMass,sum=wa+wb;if(sum<=0)continue;
@@ -925,6 +948,7 @@ void StructuralWorld::step(float dt) {
                 Vec2 correction=mul(d,error);
                 a.p=add(a.p,mul(correction,wa/sum));b.p=sub(b.p,mul(correction,wb/sum));
             }
+            if(releasedDuringSolve) continue;
             if(m.role!=MemberRole::Rope) {
                 // Second-neighbour constraints preserve each beam's local curve.
                 for(std::size_t i=1;i+1<m.particles.size();++i){
