@@ -113,6 +113,8 @@ void updateEffects(App& app,const StructuralWorld& world,float dt){
   }
  }
 }
+float scale(const App& app);
+Vector2 worldToScreen(Vec2 p,const App& app);
 void drawEffects(const App& app,const App& view){
  (void)view;
  for(const auto& p:app.effects){
