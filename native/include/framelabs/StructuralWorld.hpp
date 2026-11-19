@@ -41,6 +41,7 @@ enum class MemberRole : std::uint8_t {
     Column,
     Brace,
     Slab,
+    Wall,
     Rope
 };
 
@@ -154,6 +155,8 @@ public:
     NodeId addNode(Vec2 position, bool pinned);
     NodeId findNodeNear(Vec2 position, float radius) const;
     bool toggleNodePin(NodeId id);
+    bool moveNode(NodeId id, Vec2 position);
+    bool removeNode(NodeId id);
     bool getNodePosition(NodeId id, Vec2& outPosition) const;
     // Apply an external impulse to a movable node. Input is in newton-seconds.
     bool applyNodeImpulse(NodeId id, Vec2 impulseNewtonSeconds);
