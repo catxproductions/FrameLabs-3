@@ -16,6 +16,7 @@
 #include <string>
 #include <vector>
 #include <filesystem>
+#include <cstdlib>
 #include <fstream>
 #include <iomanip>
 #include <unordered_map>
@@ -38,7 +39,7 @@ struct App{
  std::string status="Ready — build a structure";
 };
 float clampf(float x,float a,float b){return std::max(a,std::min(b,x));}
-std::filesystem::path savedBuildDirectory(){return std::filesystem::path(GetUserDirectory())/"FrameLabs 3"/"Saved Builds";}
+std::filesystem::path savedBuildDirectory(){const char* home=std::getenv("USERPROFILE");if(!home)home=std::getenv("HOME");if(!home)home=".";return std::filesystem::path(home)/"Documents"/"FrameLabs 3"/"Saved Builds";}
 std::string safeBuildName(std::string name){
  for(char& ch:name){if(ch=='/'||ch=='\\'||ch==':'||ch=='*'||ch=='?'||ch=='"'||ch=='<'||ch=='>'||ch=='|')ch='_';}
  while(!name.empty()&&(name.back()==' '||name.back()=='.'))name.pop_back();
@@ -76,7 +77,7 @@ bool loadLatestBuild(StructuralWorld& world,App& app){
   world.clear();std::vector<NodeId> ids;ids.reserve(n);for(const auto& v:ns)ids.push_back(world.addNode(v.p,v.pin));
   for(const auto& v:ms)world.addMember(ids[v.a],ids[v.b],static_cast<MaterialKind>(v.material),static_cast<MemberRole>(v.role));
   for(const auto& v:ls)world.addLoad(v.p,v.mass);for(const auto& v:qs)world.addConnector(static_cast<ConnectorKind>(v.kind),v.a,v.b);
-  app.exits=std::move(exits);app.selectedNode=0;app.selectedMember=0;app.firstNode=0;app.hasFirstConnectorPoint=false;app.status="Loaded build: "+latest.stem().string();return true;
+  app.exits=std::move(exits);app.selectedNode=0;app.selectedMember=0;app.firstNode=0;app.hasFirstConnectorPoint=false;app.paused=true;app.tool=Tool::Select;app.status="Loaded build: "+latest.stem().string();return true;
  }catch(...){return false;}
 }
 
