@@ -58,6 +58,12 @@ Frame Mode includes three drag-to-place structural tools:
 
 Drag from an existing node or an open point to the destination. Nearby compatible nodes are reused, and new endpoints are added to the structure automatically. The member uses the currently selected material and participates in the same physics, collision, stress, and failure systems as other structural members. These quick-build tools are currently part of the browser preview.
 
+## Saved builds (browser preview)
+
+The browser preview includes a local build library. **Save Build** stores a named snapshot in the current browser, including nodes, member geometry and materials, test loads, ladders/stairs/elevators, exits, and build preferences. **Saved Builds** lets you load or delete a saved structure and export it as a portable `.fl3build.json` file. Exported builds can be imported in another browser using **Import .JSON**.
+
+Local saves stay in that browser and do not automatically sync between devices. Use export/import to transfer or back up a build.
+
 ## Building modes
 
 - **Frame Mode** preserves the existing frame construction tools.
