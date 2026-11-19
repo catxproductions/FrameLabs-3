@@ -11,8 +11,9 @@ constexpr float Pi = 3.14159265358979323846f;
 constexpr float Gravity = 9.80665f / MetersPerWorldUnit;
 constexpr float ReferenceMemberAreaM2 = 0.000367f;
 constexpr float GroundY = 0.0f;
-constexpr int SolverIterations = 12;
-constexpr float MaxPhysicsSubstep = 1.0f / 240.0f;
+// Match the browser simulation's 120 Hz fixed step and 14 structural projections.
+constexpr int SolverIterations = 14;
+constexpr float MaxPhysicsSubstep = 1.0f / 120.0f;
 constexpr int MemberSubdivisions = 5;
 
 float clampf(float v, float lo, float hi) { return std::max(lo, std::min(v, hi)); }
@@ -49,6 +50,18 @@ float tensileYieldStrain(MaterialKind material) {
 }
 float plasticCreepRate(MaterialKind material) {
     return material == MaterialKind::Steel ? 1.2f : 0.6f;
+}
+float axialStiffnessFor(MaterialKind material) {
+    // Keep the native material response in step with the browser profiles.
+    switch (material) {
+        case MaterialKind::Steel: return 0.995f;
+        case MaterialKind::Wood: return 0.985f;
+        case MaterialKind::Composite: return 0.998f;
+        case MaterialKind::ExplosiveComposite: return 0.998f;
+        case MaterialKind::FlammableComposite: return 0.997f;
+        case MaterialKind::Concrete: return 0.999f;
+    }
+    return 0.995f;
 }
 float thermalScaleFor(MaterialKind material, float temperatureC) {
     return 1.0f + thermalExpansionPerC(material) * std::max(0.0f, temperatureC - 20.0f);
@@ -891,7 +904,7 @@ void StructuralWorld::step(float dt) {
             const float heat=clampf((m.temperature-20)/700,0,1);
             const float stiffness=clampf(1.0f-profile.heatSoftening*heat,.12f,1);
             // Normalize total material stiffness across the solver iterations.
-            const float axialTarget=clampf(.92f*stiffness,0.0f,.9999f);
+            const float axialTarget=clampf(axialStiffnessFor(m.material)*stiffness,0.0f,.9999f);
             const float effectiveRestScale=thermalScaleFor(m.material,m.temperature)*(1.0f+m.plasticStrain);
             const float axialGain=1.0f-std::pow(1.0f-axialTarget,1.0f/SolverIterations);
             const float bendTarget=clampf(profile.bendingStiffness*stiffness,.05f,.999f);
@@ -933,18 +946,21 @@ void StructuralWorld::step(float dt) {
                 }
             }
         }
-        // Resolve member contacts every solver iteration so structural
-        // constraints and contact constraints converge together.
-        for(std::size_t mi=0;mi<w.memberData.size();++mi) {
-            auto& first=w.memberData[mi];
-            for(std::size_t mj=mi+1;mj<w.memberData.size();++mj) {
-                auto& second=w.memberData[mj];
-                if(first.broken || second.broken) continue;
-                if(first.a==second.a||first.a==second.b||first.b==second.a||first.b==second.b) continue;
-                for(std::size_t i=1;i<first.particles.size();++i)
-                    for(std::size_t j=1;j<second.particles.size();++j)
-                        resolveMemberSegmentContact(first,i-1,second,j-1,w.particles);
-            }
+    }
+    // Match the browser solver: settle all beam/axial constraints first, then
+    // resolve intact-member contacts once. Repeating collision projection inside
+    // every structural iteration makes contacts fight beam rigidity and inject
+    // energy, which is the source of the native "steel spaghetti" instability.
+    for(std::size_t mi=0;mi<w.memberData.size();++mi) {
+        auto& first=w.memberData[mi];
+        if(first.broken || first.hidden) continue;
+        for(std::size_t mj=mi+1;mj<w.memberData.size();++mj) {
+            auto& second=w.memberData[mj];
+            if(second.broken || second.hidden) continue;
+            if(first.a==second.a||first.a==second.b||first.b==second.a||first.b==second.b) continue;
+            for(std::size_t i=1;i<first.particles.size();++i)
+                for(std::size_t j=1;j<second.particles.size();++j)
+                    resolveMemberSegmentContact(first,i-1,second,j-1,w.particles);
         }
     }
     // Detached member chains remain physical debris: collide them with
