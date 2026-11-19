@@ -56,19 +56,22 @@ Frame Mode includes three drag-to-place structural tools:
 - **Column (C):** places a vertical member.
 - **Brace (D):** places a diagonal member aligned to 45 degrees.
 
-Drag from an existing node or an open point to the destination. Nearby compatible nodes are reused, and new endpoints are added to the structure automatically. The member uses the currently selected material and participates in the same physics, collision, stress, and failure systems as other structural members. These quick-build tools are currently part of the browser preview.
+Drag from an existing node or an open point to the destination. Nearby compatible nodes are reused, and new endpoints are added to the structure automatically. The member uses the currently selected material and participates in the same physics, collision, stress, and failure systems as other structural members. The native Windows toolbox now includes drag-to-place Beam, Column, and Brace tools with axis/45-degree alignment.
 
 ## Saved builds (browser preview)
 
 The browser preview includes a local build library. **Save Build** stores a named snapshot in the current browser, including nodes, member geometry and materials, test loads, ladders/stairs/elevators, exits, and build preferences. **Saved Builds** lets you load or delete a saved structure and export it as a portable `.fl3build.json` file. Exported builds can be imported in another browser using **Import .JSON**.
 
-Local saves stay in that browser and do not automatically sync between devices. Use export/import to transfer or back up a build.
+The native Windows edition now has **Save Build** and **Load Latest** in its top toolbar. It stores named `.fl3build` snapshots under the current Windows user's `FrameLabs 3/Saved Builds` folder. Native saves include nodes, intact member types/materials, loads, connectors, and exit markers. The current native loader restores the most recently saved native build; browser JSON import/export and cross-edition conversion are still to be added.
+
+Browser saves stay in that browser and native saves stay in the Windows user folder. They do not automatically sync between devices.
 
 ## Building modes
 
 - **Frame Mode** preserves the existing frame construction tools.
-- **Floor Mode** adds Floor and Wall panel tools. Drag from one intact structural member to another; floors snap level and walls snap vertical.
-- Panels are physical structural members that use the existing material, deformation, contact, mass, and load systems. Browser intersections are joined to the frame when a test starts.
+- **Floor Mode** adds Floor and Wall panel tools. In the browser, drag from one intact structural member to another; floors snap level and walls snap vertical.
+- The native Windows edition includes Floor and Wall tools that use two frame support nodes, create level/plumb panel members, and add a connecting support member.
+- Panels are physical structural members that use the selected material and participate in deformation, contact, mass, and load transfer.
 
 ## Controls
 
@@ -84,6 +87,10 @@ Local saves stay in that browser and do not automatically sync between devices. 
 | Middle mouse drag | Pan the viewport |
 | Mouse wheel | Zoom |
 | 1–5 | Select the corresponding tool |
+| B / C / D | Quick Build beam / column / brace (native and browser) |
+| F / W | Floor / Wall tool |
+| K | Break selected member under cursor |
+| Save Build / Load Latest | Native build library toolbar actions |
 | Space | Pause / resume |
 | R | Reset the starter experiment |
 
