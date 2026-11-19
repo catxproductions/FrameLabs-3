@@ -947,6 +947,21 @@ void StructuralWorld::step(float dt) {
             }
         }
     }
+    // Detached member chains remain physical debris: collide them with
+    // intact structure and with other detached chains instead of ghosting
+    // through the building after fracture.
+    for(std::size_t mi=0;mi<w.memberData.size();++mi){
+        auto& first=w.memberData[mi];
+        if(first.hidden) continue;
+        for(std::size_t mj=mi+1;mj<w.memberData.size();++mj){
+            auto& second=w.memberData[mj];
+            if(second.hidden || (!first.broken && !second.broken)) continue;
+            if(first.a==second.a||first.a==second.b||first.b==second.a||first.b==second.b) continue;
+            for(std::size_t i=1;i<first.particles.size();++i)
+                for(std::size_t j=1;j<second.particles.size();++j)
+                    resolveMemberSegmentContact(first,i-1,second,j-1,w.particles);
+        }
+    }
     // Re-apply continuous contacts after structural constraints so the load
     // cannot be pushed back through a member by the solver in the same step.
     for(auto& l:w.loadData){
