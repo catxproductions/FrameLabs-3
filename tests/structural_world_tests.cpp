@@ -235,7 +235,11 @@ void severeTensileImpulseFracturesSteel() {
     // single velocity kick. This exercises sustained tensile loading and gives
     // the member's strain/fatigue model time to register the load at the new scale.
     for (int i = 0; i < 4 && world.brokenMemberCount() == 0; ++i) {
-        require(world.applyNodeImpulse(pulled, {60.0f * scaleRatio, 0.0f}),
+        // The native member mass scales with its physical length and cross-section.
+        // The earlier 60 N·s calibration was too weak after the 25 ft grid change;
+        // this deliberately severe repeated impulse drives the steel past its
+        // configured tensile failure strain without changing material thresholds.
+        require(world.applyNodeImpulse(pulled, {200.0f * scaleRatio, 0.0f}),
                 "failed to apply tensile impulse to free endpoint");
         world.step(1.0f / 120.0f);
     }
