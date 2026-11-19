@@ -231,10 +231,12 @@ void severeTensileImpulseFracturesSteel() {
     // 2.236 ft world-unit calibration after increasing each unit to 25 ft.
     const float previousWorldUnitFeet = 2.2360679775f;
     const float scaleRatio = GridCellSideFeet / previousWorldUnitFeet;
-    require(world.applyNodeImpulse(pulled, {60.0f * scaleRatio, 0.0f}),
-            "failed to apply tensile impulse to free endpoint");
-
+    // Apply the pull across successive fixed steps rather than relying on a
+    // single velocity kick. This exercises sustained tensile loading and gives
+    // the member's strain/fatigue model time to register the load at the new scale.
     for (int i = 0; i < 4 && world.brokenMemberCount() == 0; ++i) {
+        require(world.applyNodeImpulse(pulled, {60.0f * scaleRatio, 0.0f}),
+                "failed to apply tensile impulse to free endpoint");
         world.step(1.0f / 120.0f);
     }
     require(world.brokenMemberCount() > 0,
