@@ -15,6 +15,10 @@
 #include <cmath>
 #include <string>
 #include <vector>
+#include <filesystem>
+#include <fstream>
+#include <iomanip>
+#include <unordered_map>
 
 namespace {
 using namespace framelabs;
@@ -29,10 +33,53 @@ struct App{
  NodeId firstNode=0,selectedNode=0; MemberId selectedMember=0;
  bool hasFirstConnectorPoint=false; Vec2 firstConnectorPoint{};
  bool quickBuildDragging=false; Vec2 quickBuildStart{},quickBuildEnd{};
+ bool namingBuild=false; std::string buildName="My Build";
  std::vector<Vec2> exits;
  std::string status="Ready — build a structure";
 };
 float clampf(float x,float a,float b){return std::max(a,std::min(b,x));}
+std::filesystem::path savedBuildDirectory(){return std::filesystem::path(GetUserDirectory())/"FrameLabs 3"/"Saved Builds";}
+std::string safeBuildName(std::string name){
+ for(char& ch:name){if(ch=='/'||ch=='\\'||ch==':'||ch=='*'||ch=='?'||ch=='"'||ch=='<'||ch=='>'||ch=='|')ch='_';}
+ while(!name.empty()&&(name.back()==' '||name.back()=='.'))name.pop_back();
+ if(name.empty())name="My Build";if(name.size()>48)name.resize(48);return name;
+}
+bool saveBuild(const StructuralWorld& world,const App& app){
+ try{
+  const auto dir=savedBuildDirectory();std::filesystem::create_directories(dir);
+  const auto path=dir/(safeBuildName(app.buildName)+".fl3build");std::ofstream out(path,std::ios::trunc);if(!out)return false;
+  out<<"FL3BUILD 1\n"<<std::setprecision(9);
+  std::unordered_map<NodeId,std::size_t> indices;const auto& nodes=world.nodes();out<<nodes.size()<<'\n';
+  for(std::size_t i=0;i<nodes.size();++i){indices[nodes[i].id]=i;out<<nodes[i].position.x<<' '<<nodes[i].position.y<<' '<<(nodes[i].pinned?1:0)<<'\n';}
+  std::vector<const MemberView*> members;for(const auto& m:world.members())if(!m.broken)members.push_back(&m);
+  out<<members.size()<<'\n';for(const auto* m:members){auto a=indices.find(m->nodeA),b=indices.find(m->nodeB);if(a==indices.end()||b==indices.end())return false;out<<a->second<<' '<<b->second<<' '<<static_cast<int>(m->material)<<' '<<static_cast<int>(m->role)<<'\n';}
+  out<<world.loads().size()<<'\n';for(const auto& l:world.loads())out<<l.position.x<<' '<<l.position.y<<' '<<l.massKg<<'\n';
+  out<<world.connectors().size()<<'\n';for(const auto& v:world.connectors())out<<static_cast<int>(v.kind)<<' '<<v.a.x<<' '<<v.a.y<<' '<<v.b.x<<' '<<v.b.y<<'\n';
+  out<<app.exits.size()<<'\n';for(const auto& e:app.exits)out<<e.x<<' '<<e.y<<'\n';
+  return static_cast<bool>(out);
+ }catch(...){return false;}
+}
+bool loadLatestBuild(StructuralWorld& world,App& app){
+ try{
+  const auto dir=savedBuildDirectory();if(!std::filesystem::exists(dir))return false;
+  std::filesystem::path latest;std::filesystem::file_time_type latestTime{};
+  for(const auto& entry:std::filesystem::directory_iterator(dir))if(entry.is_regular_file()&&entry.path().extension()==".fl3build"){
+   const auto t=entry.last_write_time();if(latest.empty()||t>latestTime){latest=entry.path();latestTime=t;}}
+  if(latest.empty())return false;std::ifstream in(latest);std::string magic;int version=0;if(!(in>>magic>>version)||magic!="FL3BUILD"||version!=1)return false;
+  std::size_t n=0;if(!(in>>n)||n>10000)return false;struct N{Vec2 p;bool pin;};std::vector<N> ns(n);
+  for(auto& v:ns){int pin=0;if(!(in>>v.p.x>>v.p.y>>pin)||!std::isfinite(v.p.x)||!std::isfinite(v.p.y))return false;v.pin=pin!=0;}
+  std::size_t m=0;if(!(in>>m)||m>20000)return false;struct M{std::size_t a,b;int material,role;};std::vector<M> ms(m);
+  for(auto& v:ms)if(!(in>>v.a>>v.b>>v.material>>v.role)||v.a>=n||v.b>=n||v.material<0||v.material>static_cast<int>(MaterialKind::Concrete)||v.role<0||v.role>static_cast<int>(MemberRole::Rope))return false;
+  std::size_t l=0;if(!(in>>l)||l>5000)return false;struct L{Vec2 p;float mass;};std::vector<L> ls(l);for(auto& v:ls)if(!(in>>v.p.x>>v.p.y>>v.mass)||!std::isfinite(v.p.x)||!std::isfinite(v.p.y)||!std::isfinite(v.mass))return false;
+  std::size_t q=0;if(!(in>>q)||q>2000)return false;struct Q{int kind;Vec2 a,b;};std::vector<Q> qs(q);for(auto& v:qs)if(!(in>>v.kind>>v.a.x>>v.a.y>>v.b.x>>v.b.y)||v.kind<0||v.kind>2)return false;
+  std::size_t e=0;if(!(in>>e)||e>2000)return false;std::vector<Vec2> exits(e);for(auto& v:exits)if(!(in>>v.x>>v.y)||!std::isfinite(v.x)||!std::isfinite(v.y))return false;
+  world.clear();std::vector<NodeId> ids;ids.reserve(n);for(const auto& v:ns)ids.push_back(world.addNode(v.p,v.pin));
+  for(const auto& v:ms)world.addMember(ids[v.a],ids[v.b],static_cast<MaterialKind>(v.material),static_cast<MemberRole>(v.role));
+  for(const auto& v:ls)world.addLoad(v.p,v.mass);for(const auto& v:qs)world.addConnector(static_cast<ConnectorKind>(v.kind),v.a,v.b);
+  app.exits=std::move(exits);app.selectedNode=0;app.selectedMember=0;app.firstNode=0;app.hasFirstConnectorPoint=false;app.status="Loaded build: "+latest.stem().string();return true;
+ }catch(...){return false;}
+}
+
 Color materialColor(MaterialKind m){auto c=materialProfile(m).color;return {c.r,c.g,c.b,255};}
 const char* materialName(MaterialKind m){return materialProfile(m).label;}
 Color stressColor(float s){
@@ -148,6 +195,7 @@ void drawWorld(const StructuralWorld&w,App&a){
  DrawRectangle(14,Top+14,205,28,Color{8,8,18,230});DrawRectangleLines(14,Top+14,205,28,Line);DrawCircle(28,Top+28,4,a.paused?Color{237,173,99,255}:Color{105,196,157,255});DrawText(a.paused?"SIMULATION PAUSED":"LIVE STRUCTURAL PHYSICS",40,Top+22,9,Text);
  DrawText("GRID SCALE: 25 FT × 25 FT / CELL",235,Top+23,9,Muted);
  DrawRectangle(14,GetScreenHeight()-42,vw-28,27,Color{8,8,18,220});DrawRectangleLines(14,GetScreenHeight()-42,vw-28,27,Line);DrawText(a.status.c_str(),25,GetScreenHeight()-34,9,Muted);
+ if(a.namingBuild){const float bx=vw*.5f-190,by=GetScreenHeight()*.5f-65;DrawRectangle(0,Top,vw,GetScreenHeight()-Top,Color{0,0,0,170});DrawRectangleRounded({bx,by,380,130},.06f,8,Panel);DrawRectangleRoundedLines({bx,by,380,130},.06f,8,Purple);DrawText("SAVE BUILD",static_cast<int>(bx+20),static_cast<int>(by+18),18,Text);DrawText(a.buildName.c_str(),static_cast<int>(bx+20),static_cast<int>(by+54),16,Lilac);DrawText("Type a name · ENTER to save · ESC to cancel",static_cast<int>(bx+20),static_cast<int>(by+96),10,Muted);}
 }
 void drawSidebar(StructuralWorld&w,App&a){
  const int x=GetScreenWidth()-Side,height=GetScreenHeight();
@@ -189,6 +237,12 @@ void drawSidebar(StructuralWorld&w,App&a){
 }
 void input(StructuralWorld&w,App&a){
  Vector2 mouse=GetMousePosition();
+ if(a.namingBuild){
+  int ch=GetCharPressed();while(ch>0){if(ch>=32&&ch<127&&a.buildName.size()<48)a.buildName.push_back(static_cast<char>(ch));ch=GetCharPressed();}
+  if(IsKeyPressed(KEY_BACKSPACE)&&!a.buildName.empty())a.buildName.pop_back();
+  if(IsKeyPressed(KEY_ENTER)){a.namingBuild=false;a.buildName=safeBuildName(a.buildName);a.status=saveBuild(w,a)?"Build saved: "+a.buildName:"Could not save build";}
+  if(IsKeyPressed(KEY_ESCAPE))a.namingBuild=false;return;
+ }
  // Keyboard commands are global to the active workspace, not the pointer region.
  if(IsKeyPressed(KEY_SPACE))a.paused=!a.paused;
  if(IsKeyPressed(KEY_R)){w.resetDemo();a.firstNode=0;a.selectedNode=0;a.selectedMember=0;a.hasFirstConnectorPoint=false;}
@@ -275,7 +329,10 @@ int main(){
   BeginDrawing();ClearBackground(BG);
   if(app.screen==Screen::Menu)drawMenu(app);else if(app.screen==Screen::Settings)drawSettings(app);else{
    DrawRectangle(0,0,GetScreenWidth(),Top,BG);DrawLine(0,Top-1,GetScreenWidth(),Top-1,Line);brand();
-   DrawText("2D STRUCTURAL SIMULATION",GetScreenWidth()-Side-220,22,9,Muted);drawWorld(world,app);drawSidebar(world,app);
+   DrawText("2D STRUCTURAL SIMULATION",GetScreenWidth()-Side-220,22,9,Muted);
+   if(button({static_cast<float>(GetScreenWidth()-Side-245),10,105,36},"Save Build")){app.namingBuild=true;app.buildName="My Build";}
+   if(button({static_cast<float>(GetScreenWidth()-Side-130),10,115,36},"Load Latest")){app.status=loadLatestBuild(world,app)?"Latest saved build loaded":"No valid saved build found";}
+   drawWorld(world,app);drawSidebar(world,app);
   }
   EndDrawing();
  }
