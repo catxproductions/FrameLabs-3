@@ -31,7 +31,7 @@ enum class Tool{Select,Node,Member,Rope,Load,Heat,Explode,Ignite,Ladder,Stairs,E
 struct VisualEffect{Vec2 position{},velocity{};float life=1,maxLife=1,radius=.03f;int kind=0;};
 struct App{
  Screen screen=Screen::Menu; Tool tool=Tool::Select; MaterialKind material=MaterialKind::Steel;
- bool paused=false,stress=true; float zoom=1; Vector2 pan{0,0};
+ bool testMode=false,paused=true,stress=true; float zoom=1,accumulator=0; Vector2 pan{0,0};
  NodeId firstNode=0,selectedNode=0; MemberId selectedMember=0;
  bool hasFirstConnectorPoint=false; Vec2 firstConnectorPoint{};
  bool quickBuildDragging=false; Vec2 quickBuildStart{},quickBuildEnd{};
@@ -138,13 +138,25 @@ float scale(const App&a){return 68*a.zoom;}
 Vector2 worldToScreen(Vec2 p,const App&a){return {105+a.pan.x+p.x*scale(a),GetScreenHeight()-100+a.pan.y-p.y*scale(a)};}
 Vec2 screenToWorld(Vector2 p,const App&a){return {(p.x-105-a.pan.x)/scale(a),(GetScreenHeight()-100+a.pan.y-p.y)/scale(a)};}
 bool inView(Vector2 p){return p.x>0&&p.x<GetScreenWidth()-Side&&p.y>Top&&p.y<GetScreenHeight()-48;}
-bool button(Rectangle r,const char*label,bool active=false){
+bool button(Rectangle r,const char*label,bool active=false,bool disabled=false){
  Vector2 m=GetMousePosition();bool over=CheckCollisionPointRec(m,r);
- DrawRectangleRounded(r,.12f,6,active?Color{53,50,102,255}:over?Color{35,33,61,255}:Panel2);
- DrawRectangleRoundedLines(r,.12f,6,active?Purple:Line);
- DrawText(label,(int)r.x+12,(int)(r.y+r.height/2-7),13,active?Text:Muted);
- return over&&IsMouseButtonReleased(MOUSE_BUTTON_LEFT);
+ const Color background=disabled?Color{13,13,23,255}:active?Color{53,50,102,255}:over?Color{35,33,61,255}:Panel2;
+ const Color foreground=disabled?Color{75,73,96,255}:active?Text:Muted;
+ DrawRectangleRounded(r,.12f,6,background);
+ DrawRectangleRoundedLines(r,.12f,6,disabled?Color{37,36,55,255}:active?Purple:Line);
+ DrawText(label,(int)r.x+12,(int)(r.y+r.height/2-7),13,foreground);
+ return !disabled&&over&&IsMouseButtonReleased(MOUSE_BUTTON_LEFT);
 }
+bool isBuildOnlyTool(Tool tool){
+ switch(tool){
+  case Tool::Node:case Tool::Member:case Tool::Rope:case Tool::Load:
+  case Tool::Ladder:case Tool::Stairs:case Tool::Elevator:
+  case Tool::QuickBeam:case Tool::QuickColumn:case Tool::QuickBrace:
+  case Tool::Floor:case Tool::Wall:case Tool::Delete:case Tool::Exit:return true;
+  default:return false;
+ }
+}
+bool isTestOnlyTool(Tool tool){return tool==Tool::Break||tool==Tool::Explode||tool==Tool::Ignite;}
 void brand(){DrawRectangleLines(18,15,27,27,Purple);DrawRectangle(24,30,4,7,Purple);DrawRectangle(30,24,4,13,Purple);DrawRectangle(36,19,4,18,Lilac);DrawText("FRAMELABS",58,17,16,Lilac);DrawText("3",148,17,16,Purple);DrawText("STRUCTURAL LAB",181,22,9,Muted);}
 void drawMenu(App&a){
  DrawRectangle(0,0,GetScreenWidth(),GetScreenHeight(),BG);DrawRectangle(GetScreenWidth()/2,0,GetScreenWidth()/2,GetScreenHeight(),Color{17,17,37,255});brand();
@@ -240,7 +252,7 @@ void drawWorld(const StructuralWorld&w,App&a){
  for(const auto&n:w.nodes()){Vector2 p=worldToScreen(n.position,a);Color c=n.pinned?Color{244,192,105,255}:Color{210,208,242,255};DrawCircleV(p,n.id==a.selectedNode?10:6,c);DrawCircleLines((int)p.x,(int)p.y,n.id==a.selectedNode?14:9,Color{30,29,54,255});}
  if(a.firstNode)for(const auto&n:w.nodes())if(n.id==a.firstNode){Vector2 p=worldToScreen(n.position,a);DrawCircleLines((int)p.x,(int)p.y,17,Purple);}
  EndScissorMode();
- DrawRectangle(14,Top+14,205,28,Color{8,8,18,230});DrawRectangleLines(14,Top+14,205,28,Line);DrawCircle(28,Top+28,4,a.paused?Color{237,173,99,255}:Color{105,196,157,255});DrawText(a.paused?"SIMULATION PAUSED":"LIVE STRUCTURAL PHYSICS",40,Top+22,9,Text);
+ DrawRectangle(14,Top+14,250,28,Color{8,8,18,230});DrawRectangleLines(14,Top+14,250,28,Line);DrawCircle(28,Top+28,4,!a.testMode?Color{139,136,171,255}:a.paused?Color{237,173,99,255}:Color{105,196,157,255});DrawText(!a.testMode?"BUILD MODE / SIMULATION STOPPED":a.paused?"TEST PAUSED":"TEST RUNNING / 120 HZ FIXED STEP",40,Top+22,9,Text);
  DrawText("GRID SCALE: 25 FT × 25 FT / CELL",235,Top+23,9,Muted);
  DrawRectangle(14,GetScreenHeight()-42,vw-28,27,Color{8,8,18,220});DrawRectangleLines(14,GetScreenHeight()-42,vw-28,27,Line);DrawText(a.status.c_str(),25,GetScreenHeight()-34,9,Muted);
  if(a.namingBuild){const float bx=vw*.5f-190,by=GetScreenHeight()*.5f-65;DrawRectangle(0,Top,vw,GetScreenHeight()-Top,Color{0,0,0,170});DrawRectangleRounded({bx,by,380,130},.06f,8,Panel);DrawRectangleRoundedLines({bx,by,380,130},.06f,8,Purple);DrawText("SAVE BUILD",static_cast<int>(bx+20),static_cast<int>(by+18),18,Text);DrawText(a.buildName.c_str(),static_cast<int>(bx+20),static_cast<int>(by+54),16,Lilac);DrawText("Type a name · ENTER to save · ESC to cancel",static_cast<int>(bx+20),static_cast<int>(by+96),10,Muted);}
@@ -257,7 +269,8 @@ void drawSidebar(StructuralWorld&w,App&a){
  for(int i=0;i<19;i++){
   const float bx=static_cast<float>(x+18)+(i%3)*(toolWidth+6.0f);
   const float by=toolStart+(i/3)*toolStep;
-  if(button({bx,by,toolWidth,toolHeight},names[i],a.tool==tools[i])){
+  const bool disabled=(a.testMode&&isBuildOnlyTool(tools[i]))||(!a.testMode&&isTestOnlyTool(tools[i]));
+  if(button({bx,by,toolWidth,toolHeight},names[i],a.tool==tools[i],disabled)){
    a.tool=tools[i];a.firstNode=0;a.hasFirstConnectorPoint=false;a.quickBuildDragging=false;a.status=std::string(names[i])+" selected";
   }
  }
@@ -267,8 +280,15 @@ void drawSidebar(StructuralWorld&w,App&a){
  for(int i=0;i<5;i++){float bx=x+18+(i%2)*130,by=materialStart+(i/2)*materialStep;if(button({bx,by,122,materialHeight},materialName(mats[i]),a.material==mats[i]))a.material=mats[i];}
  const float simulationLine=compact?522.0f:600.0f,simulationTitle=compact?535.0f:613.0f,simulationStart=compact?554.0f:632.0f,simulationStep=compact?24.0f:29.0f,simulationHeight=compact?21.0f:24.0f;
  DrawLine(x+18,simulationLine,x+Side-18,simulationLine,Line);DrawText("SIMULATION",x+20,(int)simulationTitle,9,Muted);
- if(button({(float)x+18,simulationStart,Side-36.0f,simulationHeight},a.paused?"Resume":"Pause"))a.paused=!a.paused;
- if(button({(float)x+18,simulationStart+simulationStep,Side-36.0f,simulationHeight},"Reset experiment")){w.resetDemo();a.selectedNode=0;a.selectedMember=0;a.firstNode=0;}
+ const char* testLabel=!a.testMode?"Start Test":a.paused?"Resume Test":"Pause Test";
+ if(button({(float)x+18,simulationStart,Side-36.0f,simulationHeight},testLabel)){
+  if(!a.testMode){a.testMode=true;a.paused=false;a.accumulator=0;a.tool=Tool::Select;a.firstNode=0;a.status="Structural test started at 120 Hz";}
+  else{a.paused=!a.paused;a.accumulator=0;a.status=a.paused?"Structural test paused":"Structural test resumed";}
+ }
+ if(button({(float)x+18,simulationStart+simulationStep,Side-36.0f,simulationHeight},a.testMode?"End Test / Reset Demo":"Reset experiment")){
+  w.resetDemo();a.selectedNode=0;a.selectedMember=0;a.firstNode=0;a.hasFirstConnectorPoint=false;
+  a.testMode=false;a.paused=true;a.accumulator=0;a.effects.clear();a.status="Starter experiment restored in build mode";
+ }
  if(button({(float)x+18,simulationStart+2*simulationStep,Side-36.0f,simulationHeight},a.stress?"Stress overlay: ON":"Stress overlay: OFF"))a.stress=!a.stress;
  DrawLine(x+18,compact?620:725,x+Side-18,compact?620:725,Line);
  if(compact){
@@ -291,10 +311,20 @@ void input(StructuralWorld&w,App&a){
   if(IsKeyPressed(KEY_ENTER)){a.namingBuild=false;a.buildName=safeBuildName(a.buildName);a.status=saveBuild(w,a)?"Build saved: "+a.buildName:"Could not save build";}
   if(IsKeyPressed(KEY_ESCAPE))a.namingBuild=false;return;
  }
- // Keyboard commands are global to the active workspace, not the pointer region.
- if(IsKeyPressed(KEY_SPACE))a.paused=!a.paused;
- if(IsKeyPressed(KEY_R)){w.resetDemo();a.firstNode=0;a.selectedNode=0;a.selectedMember=0;a.hasFirstConnectorPoint=false;}
- auto chooseTool=[&](Tool tool){if(a.tool!=tool){a.tool=tool;a.firstNode=0;a.hasFirstConnectorPoint=false;}};
+ // Match browser test-mode controls: building is static until Start Test.
+ if(IsKeyPressed(KEY_SPACE)){
+  if(a.testMode){a.paused=!a.paused;a.accumulator=0;a.status=a.paused?"Structural test paused":"Structural test resumed";}
+  else a.status="Start Test before running structural physics";
+ }
+ if(IsKeyPressed(KEY_R)){
+  w.resetDemo();a.firstNode=0;a.selectedNode=0;a.selectedMember=0;a.hasFirstConnectorPoint=false;
+  a.testMode=false;a.paused=true;a.accumulator=0;a.effects.clear();a.status="Starter experiment restored in build mode";
+ }
+ auto chooseTool=[&](Tool tool){
+  if(a.testMode&&isBuildOnlyTool(tool)){a.status="Building tools are locked during a test";return;}
+  if(!a.testMode&&isTestOnlyTool(tool)){a.status="Start Test before using destruction tools";return;}
+  if(a.tool!=tool){a.tool=tool;a.firstNode=0;a.hasFirstConnectorPoint=false;}
+ };
  if(IsKeyPressed(KEY_ONE))chooseTool(Tool::Select);
  if(IsKeyPressed(KEY_TWO))chooseTool(Tool::Node);
  if(IsKeyPressed(KEY_THREE))chooseTool(Tool::Member);
@@ -312,6 +342,7 @@ void input(StructuralWorld&w,App&a){
  if(IsKeyPressed(KEY_F))chooseTool(Tool::Floor);
  if(IsKeyPressed(KEY_W))chooseTool(Tool::Wall);
  if(IsKeyPressed(KEY_K))chooseTool(Tool::Break);
+ if((a.testMode&&isBuildOnlyTool(a.tool))||(!a.testMode&&isTestOnlyTool(a.tool)))return;
  if(mouse.x>GetScreenWidth()-Side||mouse.y<Top)return;
  if(IsMouseButtonDown(MOUSE_BUTTON_MIDDLE)){Vector2 d=GetMouseDelta();a.pan.x+=d.x;a.pan.y+=d.y;}
  float wheel=GetMouseWheelMove();if(wheel!=0&&inView(mouse))a.zoom=clampf(a.zoom+wheel*.08f,.45f,2.4f);
@@ -332,7 +363,7 @@ void input(StructuralWorld&w,App&a){
   if(a.quickBuildDragging)return;
  }
  if(a.tool==Tool::Ignite&&IsMouseButtonDown(MOUSE_BUTTON_LEFT)&&inView(mouse)){w.ignite(screenToWorld(mouse,a),.55f);return;}
- if(IsMouseButtonPressed(MOUSE_BUTTON_RIGHT)&&inView(mouse)){NodeId n=w.findNodeNear(screenToWorld(mouse,a),.28f);if(n)w.toggleNodePin(n);return;}
+ if(IsMouseButtonPressed(MOUSE_BUTTON_RIGHT)&&inView(mouse)){if(!a.testMode){NodeId n=w.findNodeNear(screenToWorld(mouse,a),.28f);if(n)w.toggleNodePin(n);}else a.status="Supports are locked during a test";return;}
  if(!IsMouseButtonPressed(MOUSE_BUTTON_LEFT)||!inView(mouse))return;
  Vec2 p=screenToWorld(mouse,a);
  if(a.tool==Tool::Node){a.selectedNode=w.addNode(p,false);a.status="Node added";return;}
@@ -370,10 +401,28 @@ void input(StructuralWorld&w,App&a){
 }
 int main(){
  SetConfigFlags(FLAG_WINDOW_RESIZABLE|FLAG_MSAA_4X_HINT|FLAG_VSYNC_HINT);InitWindow(W,H,"FrameLabs 3 — Structural Lab");SetWindowMinSize(1024,680);SetTargetFPS(120);
- App app;StructuralWorld world;float accumulator=0;constexpr float fixed=1.0f/120.0f;
+ App app;StructuralWorld world;constexpr float fixed=1.0f/120.0f;
  while(!WindowShouldClose()){
-  float dt=std::min(GetFrameTime(),.05f);
-  if(app.screen==Screen::Game){input(world,app);if(!app.paused){updateEffects(app,world,dt);accumulator+=dt;while(accumulator>=fixed){world.step(fixed);accumulator-=fixed;}}}
+  const float frameDelta=clampf(GetFrameTime(),0.0f,0.1f);
+  if(app.screen==Screen::Game){
+   input(world,app);
+   if(app.testMode&&!app.paused){
+    app.accumulator=std::min(0.1f,app.accumulator+frameDelta);
+    int steps=0;
+    while(app.accumulator>=fixed&&steps<12){
+     updateEffects(app,world,fixed);
+     world.step(fixed);
+     app.accumulator-=fixed;
+     ++steps;
+    }
+    if(steps==12)app.accumulator=0;
+   }else{
+    app.accumulator=0;
+    // The browser continues visual particles while building, but freezes
+    // the entire test state and its particles while a test is paused.
+    if(!app.testMode)updateEffects(app,world,frameDelta);
+   }
+  }
   BeginDrawing();ClearBackground(BG);
   if(app.screen==Screen::Menu)drawMenu(app);else if(app.screen==Screen::Settings)drawSettings(app);else{
    DrawRectangle(0,0,GetScreenWidth(),Top,BG);DrawLine(0,Top-1,GetScreenWidth(),Top-1,Line);brand();
