@@ -82,6 +82,38 @@ void loadsContactTheFullLengthOfLongMembers() {
     require(load->position.y > 5.15f, "load passed through the middle of a long beam");
 }
 
+void steelBeamRemainsCoherentUnderSupportedTestLoad() {
+    StructuralWorld world;
+    world.clear();
+    const NodeId left = world.addNode({1.0f, 5.0f}, true);
+    const NodeId right = world.addNode({5.0f, 5.0f}, true);
+    const MemberId beam = world.addMember(left, right, MaterialKind::Steel, MemberRole::Beam);
+    require(beam != 0, "failed to create supported steel beam");
+    world.addLoad({3.0f, 6.2f}, 220.0f);
+
+    for (int i = 0; i < 360; ++i) world.step(1.0f / 120.0f);
+
+    const MemberView* view = nullptr;
+    for (const auto& member : world.members()) if (member.id == beam) view = &member;
+    require(view != nullptr, "supported steel beam disappeared");
+    require(!view->broken, "supported steel beam fractured under a moderate test load");
+
+    float maximumSag = 0.0f;
+    float maximumJointAngle = 0.0f;
+    for (const auto& segment : view->segments) {
+        maximumSag = std::max(maximumSag, 5.0f - segment.center.y);
+    }
+    for (std::size_t i = 1; i < view->segments.size(); ++i) {
+        float angle = std::fabs(view->segments[i].angleRadians - view->segments[i - 1].angleRadians);
+        if (angle > 3.14159265f) angle = 6.28318530f - angle;
+        maximumJointAngle = std::max(maximumJointAngle, angle);
+    }
+    require(maximumSag < 0.75f,
+            "steel beam sagged excessively and behaved like a flexible chain");
+    require(maximumJointAngle < 0.55f,
+            "steel beam developed a sharp chain-like kink between subdivisions");
+}
+
 void heatBrushReachesMemberEndpoints() {
     StructuralWorld world;
     world.clear();
@@ -372,6 +404,7 @@ int main() {
     run("starter frame stability without demonstration load", starterFrameRemainsIntactWithoutTestLoad);
     run("nodes placed on the floor become glued base nodes", nodesPlacedOnGroundBecomeFloorBases);
     run("continuous load contact", loadsContactTheFullLengthOfLongMembers);
+    run("steel beam stability under supported test load", steelBeamRemainsCoherentUnderSupportedTestLoad);
     run("full-length heat brush", heatBrushReachesMemberEndpoints);
     run("material bending hierarchy and contact profiles", materialProfilesPreserveTheRequestedBendingOrder);
     run("composite ignition and explosion effects", compositeEffectsAreRestrictedToTheirMatchingMaterials);
