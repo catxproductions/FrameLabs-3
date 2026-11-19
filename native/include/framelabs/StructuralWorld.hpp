@@ -163,6 +163,7 @@ public:
 
     MemberId addMember(NodeId nodeA, NodeId nodeB, MaterialKind material, MemberRole role = MemberRole::Beam);
     bool removeMember(MemberId id);
+    bool deleteMember(MemberId id);
     MemberId findMemberNear(Vec2 point, float radius) const;
 
     std::uint32_t addLoad(Vec2 position, float massKg = 110.0f);
