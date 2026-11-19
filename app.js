@@ -183,6 +183,8 @@
       <div class="browser-sim-actions">
         <button type="button" id="startTestSimulation" title="Start or pause the structural test">▶ Start Test</button>
         <button type="button" id="resetStructure" title="Restore the structure exactly as it was before the latest test" disabled>↻ Reset Structure</button>
+        <button type="button" id="saveBuildButton" title="Save this structure to your local build library">▣ Save Build</button>
+        <button type="button" id="openBuildLibraryButton" title="Browse, load, export, or delete saved structures">▤ Saved Builds <span id="savedBuildCount">0</span></button>
         <button type="button" id="stressToggle" aria-pressed="true">Stress: On</button>
         <button type="button" id="gridSnapToggle" aria-pressed="false">Grid snap: Off</button>
         <button type="button" id="clearScene" class="clear-scene-action">Clear scene</button>
@@ -254,7 +256,36 @@
       .browser-tool-grid .tool b{font-size:9px}
       #selectionSummary{min-height:52px}
       .workspace-screen .grid-bg{background-size:24px 24px;background-position:0 0}
+      .browser-sim-actions #saveBuildButton{border-color:rgba(124,121,207,.55);background:rgba(95,92,172,.18);color:#d5d2ff}
+      .browser-sim-actions #openBuildLibraryButton{grid-column:1/-1;color:#b8b5dc}
+      .browser-sim-actions #savedBuildCount{display:inline-grid;place-items:center;min-width:16px;height:16px;margin-left:3px;border-radius:9px;background:rgba(132,128,213,.18);color:#d8d6ff}
+      .build-library-dialog{width:min(600px,calc(100% - 28px));max-height:min(82vh,760px);padding:0;border:1px solid rgba(144,141,214,.34);border-radius:8px;background:#080810;color:#f1f0ff;box-shadow:0 25px 100px rgba(0,0,0,.6)}
+      .build-library-shell{position:relative;display:flex;flex-direction:column;max-height:min(82vh,760px);padding:30px}
+      .build-library-close{position:absolute;top:15px;right:17px;width:30px;height:30px;border:1px solid rgba(144,141,214,.2);border-radius:3px;background:#101020;color:#aaa8c7;font-size:21px}
+      .build-library-shell>.eyebrow{margin:0;color:#8582d1;font-size:8px;letter-spacing:.16em}
+      .build-library-shell h2{margin:8px 0 7px;color:#e5e3ff;font-family:var(--display);font-size:36px;font-weight:400}
+      .build-library-shell h2 span{color:#8986d8}
+      .build-library-description{margin:0 32px 22px 0;color:#9290ad;font-size:10px;line-height:1.6}
+      .build-library-pane[hidden]{display:none}
+      .build-library-pane label{display:block;margin-bottom:8px;color:#9290ad;font-size:8px;font-weight:800;letter-spacing:.14em}
+      .build-library-pane input[type=text]{width:100%;height:39px;padding:0 11px;border:1px solid rgba(141,139,205,.24);border-radius:3px;outline:none;background:#0d0d19;color:#e3e1ff;font:inherit;font-size:11px}
+      .build-library-pane input[type=text]:focus{border-color:#8582d1;box-shadow:0 0 0 3px rgba(133,130,209,.12)}
+      .build-primary-action{width:100%;min-height:39px;margin-top:12px;border:1px solid #7774c8;border-radius:3px;background:rgba(119,116,200,.2);color:#e1dfff;font-size:10px;font-weight:750}
+      .build-library-list-heading{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;color:#a5a2ca;font-size:8px;font-weight:800;letter-spacing:.13em}
+      .build-library-list-heading button,.saved-build-actions button{min-height:28px;padding:4px 9px;border:1px solid rgba(141,139,205,.22);border-radius:3px;background:#101020;color:#aaa8c7;font-size:8px}
+      .saved-build-list{display:grid;gap:7px;max-height:min(48vh,420px);overflow:auto;padding-right:3px}
+      .saved-build-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px;border:1px solid rgba(141,139,205,.16);border-radius:3px;background:rgba(255,255,255,.018)}
+      .saved-build-information{display:grid;min-width:0;gap:4px}
+      .saved-build-information b{overflow-wrap:anywhere;color:#d2d0ec;font-size:10px;font-weight:700}
+      .saved-build-information small{color:#77758f;font-size:8px;line-height:1.35}
+      .saved-build-information .saved-build-date{color:#5f5d79}
+      .saved-build-actions{display:flex;flex:0 0 auto;gap:5px}
+      .saved-build-actions .saved-build-load{border-color:rgba(124,121,207,.55);background:rgba(95,92,172,.18);color:#d5d2ff}
+      .saved-build-actions .saved-build-delete{border-color:rgba(190,104,111,.35);color:#d59a9f}
+      .saved-build-empty{padding:15px;border:1px dashed rgba(141,139,205,.2);color:#85839f;font-size:9px;line-height:1.5}
+      .build-library-footer{display:flex;justify-content:space-between;gap:12px;margin-top:20px;padding-top:12px;border-top:1px solid rgba(141,139,205,.14);color:#64627f;font-size:7px;font-weight:750;letter-spacing:.1em}
       @media(max-width:820px){.browser-sim-actions{grid-template-columns:repeat(2,minmax(0,1fr))}}
+      @media(max-width:560px){.build-library-shell{padding:25px 16px 18px}.build-library-shell h2{font-size:31px}.saved-build-row{align-items:flex-start;flex-direction:column}.saved-build-actions{width:100%}.saved-build-actions button{flex:1}.build-library-footer{flex-direction:column;gap:5px}}
     `;
     document.head.appendChild(style);
 
@@ -854,6 +885,11 @@
         height: state.height,
         nextNode: state.nextNode,
         nextMember: state.nextMember,
+        material: state.material,
+        buildMode: state.buildMode,
+        stress: state.stress,
+        gridSnap: state.gridSnap,
+        gridSize: state.gridSize,
         nodes: state.nodes.map(node => ({
           id: node.id, x: node.x, y: node.y, px: node.px, py: node.py,
           pinned: node.pinned, baseNode: !!node.baseNode, radius: node.radius, baseMass: node.baseMass
@@ -907,6 +943,24 @@
       worldSystems.restoreNavigation(snapshot.navigation);
       state.nextNode = snapshot.nextNode;
       state.nextMember = snapshot.nextMember;
+      state.material = materialProfiles[snapshot.material] ? snapshot.material : "steel";
+      state.buildMode = snapshot.buildMode === "floor" ? "floor" : "frame";
+      state.stress = snapshot.stress !== false;
+      state.gridSnap = !!snapshot.gridSnap;
+      state.gridSize = Number.isFinite(snapshot.gridSize) && snapshot.gridSize > 0
+        ? snapshot.gridSize : GRID_CELL_PX;
+      const materialSelect = document.getElementById("materialSelect");
+      const stressToggle = document.getElementById("stressToggle");
+      const gridSnapToggle = document.getElementById("gridSnapToggle");
+      if (materialSelect) materialSelect.value = state.material;
+      if (stressToggle) {
+        stressToggle.textContent = "Stress: " + (state.stress ? "On" : "Off");
+        stressToggle.setAttribute("aria-pressed", String(state.stress));
+      }
+      if (gridSnapToggle) {
+        gridSnapToggle.textContent = "Grid snap: " + (state.gridSnap ? "On" : "Off");
+        gridSnapToggle.setAttribute("aria-pressed", String(state.gridSnap));
+      }
       state.firstNode = null;
       state.selectedNode = null;
       state.selectedMember = null;
@@ -917,6 +971,379 @@
       state.lastTime = 0;
       updateInspector();
       draw();
+    }
+
+    const BUILD_LIBRARY_STORAGE_KEY = "framelabs3.saved-builds.v1";
+    const MAX_SAVED_BUILDS = 40;
+
+    function readSavedBuilds() {
+      try {
+        const raw = window.localStorage.getItem(BUILD_LIBRARY_STORAGE_KEY);
+        const parsed = raw ? JSON.parse(raw) : [];
+        return Array.isArray(parsed) ? parsed.filter(record =>
+          record && typeof record.id === "string" &&
+          typeof record.name === "string" &&
+          record.snapshot && Array.isArray(record.snapshot.nodes) &&
+          Array.isArray(record.snapshot.members)
+        ) : [];
+      } catch (error) {
+        console.warn("FrameLabs 3 could not read its saved-build library.", error);
+        return [];
+      }
+    }
+
+    function writeSavedBuilds(records) {
+      try {
+        window.localStorage.setItem(BUILD_LIBRARY_STORAGE_KEY, JSON.stringify(records));
+        return true;
+      } catch (error) {
+        console.warn("FrameLabs 3 could not write its saved-build library.", error);
+        notify("Could not save this build. Browser storage may be full or unavailable. Export a build to keep a portable copy.");
+        return false;
+      }
+    }
+
+    function createBuildExport(record) {
+      return {
+        format: "framelabs3-build",
+        version: 1,
+        name: record.name,
+        exportedAt: new Date().toISOString(),
+        snapshot: record.snapshot
+      };
+    }
+
+    function downloadBuild(record) {
+      try {
+        const blob = new Blob([JSON.stringify(createBuildExport(record), null, 2)], {
+          type: "application/json"
+        });
+        const url = URL.createObjectURL(blob);
+        const anchor = document.createElement("a");
+        const safeName = record.name.toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "framelabs-build";
+        anchor.href = url;
+        anchor.download = safeName + ".fl3build.json";
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+        window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+        return true;
+      } catch (error) {
+        console.error("FrameLabs 3 could not export this build.", error);
+        notify("Build export failed in this browser.");
+        return false;
+      }
+    }
+
+    function validateImportedBuild(snapshot) {
+      if (!snapshot || typeof snapshot !== "object" ||
+          !Array.isArray(snapshot.nodes) || !Array.isArray(snapshot.members) ||
+          !Array.isArray(snapshot.loads) || !snapshot.navigation ||
+          snapshot.nodes.length > 10000 || snapshot.members.length > 20000 ||
+          snapshot.loads.length > 5000) return false;
+
+      const validPoint = point => point && Number.isFinite(point.x) &&
+        Number.isFinite(point.y) && Math.abs(point.x) < 1000000 &&
+        Math.abs(point.y) < 1000000;
+
+      if (!snapshot.nodes.every(node => validPoint(node) &&
+          (node.px === undefined || Number.isFinite(node.px)) &&
+          (node.py === undefined || Number.isFinite(node.py)))) return false;
+
+      const allowedKinds = new Set(["beam", "rope", "column", "brace", "floor", "wall"]);
+      const allowedMaterials = new Set(Object.keys(materialProfiles));
+      if (!snapshot.members.every(member =>
+          Number.isInteger(member.a) && Number.isInteger(member.b) &&
+          member.a >= 0 && member.b >= 0 &&
+          member.a < snapshot.nodes.length && member.b < snapshot.nodes.length &&
+          member.a !== member.b &&
+          allowedKinds.has(member.kind || "beam") &&
+          allowedMaterials.has(member.material) &&
+          Array.isArray(member.interior) &&
+          member.interior.every(validPoint))) return false;
+
+      if (!snapshot.loads.every(load => validPoint(load) &&
+          Number.isFinite(load.mass) && load.mass > 0)) return false;
+
+      const navigation = snapshot.navigation;
+      if (!Array.isArray(navigation.connectors) || !Array.isArray(navigation.exits)) return false;
+      if (!navigation.connectors.every(link =>
+          link && ["ladder", "stairs", "elevator"].includes(link.kind) &&
+          validPoint(link.a) && validPoint(link.b))) return false;
+      if (!navigation.exits.every(validPoint)) return false;
+      return true;
+    }
+
+    function makeBuildRecord(name, snapshot, existingRecord) {
+      const now = new Date().toISOString();
+      return {
+        id: existingRecord ? existingRecord.id : "build-" + Date.now() + "-" +
+          Math.random().toString(36).slice(2, 8),
+        name: name,
+        createdAt: existingRecord ? existingRecord.createdAt : now,
+        updatedAt: now,
+        snapshot: JSON.parse(JSON.stringify(snapshot))
+      };
+    }
+
+    function saveCurrentBuild(name) {
+      const cleanName = String(name || "").trim().replace(/\s+/g, " ").slice(0, 48);
+      if (!cleanName) {
+        notify("Enter a name for this build.");
+        return false;
+      }
+
+      const sourceSnapshot = state.testMode && state.testSnapshot
+        ? state.testSnapshot : captureBuildSnapshot();
+      if (!sourceSnapshot.nodes.length && !sourceSnapshot.members.length) {
+        notify("There is nothing to save yet. Build a structure first.");
+        return false;
+      }
+
+      let snapshot;
+      try {
+        snapshot = JSON.parse(JSON.stringify(sourceSnapshot));
+      } catch (error) {
+        notify("This build could not be prepared for saving.");
+        return false;
+      }
+
+      const records = readSavedBuilds();
+      const matchingIndex = records.findIndex(record =>
+        record.name.toLocaleLowerCase() === cleanName.toLocaleLowerCase());
+      const existing = matchingIndex >= 0 ? records[matchingIndex] : null;
+      if (!existing && records.length >= MAX_SAVED_BUILDS) {
+        notify("Your local library is full. Delete a saved build before adding another.");
+        return false;
+      }
+
+      const record = makeBuildRecord(cleanName, snapshot, existing);
+      if (existing) records[matchingIndex] = record;
+      else records.unshift(record);
+
+      if (!writeSavedBuilds(records)) return false;
+      refreshSavedBuildCount();
+      notify((existing ? "Updated \"" : "Saved \"") + cleanName +
+        (existing ? "\" in your build library." : "\" to your build library."));
+      return record;
+    }
+
+    function refreshSavedBuildCount() {
+      const count = document.getElementById("savedBuildCount");
+      if (count) count.textContent = String(readSavedBuilds().length);
+    }
+
+    function applySavedBuild(record) {
+      if (!record || !validateImportedBuild(record.snapshot)) {
+        notify("That saved build is invalid or was created by an incompatible version.");
+        return false;
+      }
+      if (occupantSimulation) occupantSimulation.clear();
+      state.testMode = false;
+      state.paused = true;
+      state.testSnapshot = null;
+      restoreBuildSnapshot(record.snapshot);
+      state.buildMode = record.snapshot.buildMode === "floor" ? "floor" : "frame";
+      setTool(state.buildMode === "floor" ? "floor" : "select");
+      updateSimulationControls();
+      updateInspector();
+      draw();
+      notify("Loaded \"" + record.name + "\". Your saved structure is ready to edit.");
+      return true;
+    }
+
+    function saveImportedBuild(name, snapshot) {
+      const records = readSavedBuilds();
+      const matchingIndex = records.findIndex(record =>
+        record.name.toLocaleLowerCase() === name.toLocaleLowerCase());
+      const existing = matchingIndex >= 0 ? records[matchingIndex] : null;
+      if (!existing && records.length >= MAX_SAVED_BUILDS) {
+        notify("Your local library is full. Delete a saved build before importing another.");
+        return null;
+      }
+      const record = makeBuildRecord(name, snapshot, existing);
+      if (existing) records[matchingIndex] = record;
+      else records.unshift(record);
+      return writeSavedBuilds(records) ? record : null;
+    }
+
+    function initializeBuildLibraryUI() {
+      const dialog = document.createElement("dialog");
+      dialog.id = "buildLibraryDialog";
+      dialog.className = "build-library-dialog";
+      dialog.setAttribute("aria-labelledby", "buildDialogTitle");
+      dialog.innerHTML = '<div class="build-library-shell">' +
+        '<button type="button" class="build-library-close" id="closeBuildLibrary" aria-label="Close">×</button>' +
+        '<small class="eyebrow">FRAMELABS 3 / BUILD LIBRARY</small>' +
+        '<h2 id="buildDialogTitle">Save a <span>build.</span></h2>' +
+        '<p class="build-library-description" id="buildDialogDescription">Give this structure a name. It will be saved in this browser.</p>' +
+        '<section id="saveBuildPane" class="build-library-pane">' +
+        '<label for="buildNameInput">BUILD NAME</label>' +
+        '<input id="buildNameInput" type="text" maxlength="48" autocomplete="off" placeholder="e.g. Four-storey steel frame">' +
+        '<button type="button" class="build-primary-action" id="confirmSaveBuild">Save Build</button>' +
+        '</section>' +
+        '<section id="manageBuildPane" class="build-library-pane" hidden>' +
+        '<div class="build-library-list-heading"><span>SAVED STRUCTURES</span>' +
+        '<button type="button" id="importBuildButton">Import .JSON</button></div>' +
+        '<div id="savedBuildList" class="saved-build-list"></div>' +
+        '</section>' +
+        '<input type="file" id="importBuildFile" accept=".json,.fl3build.json,application/json" hidden>' +
+        '<footer class="build-library-footer"><span>LOCAL BROWSER STORAGE</span>' +
+        '<span>EXPORT TO MOVE BUILDS TO ANOTHER DEVICE</span></footer></div>';
+      document.body.appendChild(dialog);
+
+      const savePane = dialog.querySelector("#saveBuildPane");
+      const managePane = dialog.querySelector("#manageBuildPane");
+      const title = dialog.querySelector("#buildDialogTitle");
+      const description = dialog.querySelector("#buildDialogDescription");
+      const nameInput = dialog.querySelector("#buildNameInput");
+      const list = dialog.querySelector("#savedBuildList");
+      const fileInput = dialog.querySelector("#importBuildFile");
+
+      function renderSavedBuildList() {
+        const records = readSavedBuilds().sort((a, b) =>
+          String(b.updatedAt || b.createdAt || "").localeCompare(
+            String(a.updatedAt || a.createdAt || "")));
+        list.replaceChildren();
+        refreshSavedBuildCount();
+
+        if (!records.length) {
+          const empty = document.createElement("p");
+          empty.className = "saved-build-empty";
+          empty.textContent = "No saved builds yet. Use Save Build to store your first structure.";
+          list.appendChild(empty);
+          return;
+        }
+
+        for (const record of records) {
+          const row = document.createElement("article");
+          row.className = "saved-build-row";
+          const information = document.createElement("div");
+          information.className = "saved-build-information";
+          const name = document.createElement("b");
+          name.textContent = record.name;
+          const details = document.createElement("small");
+          const navigation = record.snapshot.navigation || {};
+          const connectorCount = Array.isArray(navigation.connectors) ? navigation.connectors.length : 0;
+          const exitCount = Array.isArray(navigation.exits) ? navigation.exits.length : 0;
+          details.textContent = record.snapshot.nodes.length + " nodes · " +
+            record.snapshot.members.length + " members · " + record.snapshot.loads.length +
+            " loads · " + connectorCount + " connectors · " + exitCount + " exits";
+          const date = document.createElement("small");
+          date.className = "saved-build-date";
+          const timestamp = record.updatedAt || record.createdAt;
+          date.textContent = timestamp && Number.isFinite(Date.parse(timestamp))
+            ? "Saved " + new Date(timestamp).toLocaleString() : "Saved build";
+          information.append(name, details, date);
+
+          const actions = document.createElement("div");
+          actions.className = "saved-build-actions";
+
+          const loadButton = document.createElement("button");
+          loadButton.type = "button";
+          loadButton.textContent = "Load";
+          loadButton.className = "saved-build-load";
+          loadButton.addEventListener("click", () => {
+            if (state.nodes.length || state.members.length || state.loads.length) {
+              const confirmed = window.confirm("Load \"" + record.name +
+                "\" and replace the structure currently in the workspace?");
+              if (!confirmed) return;
+            }
+            if (applySavedBuild(record)) dialog.close();
+          });
+
+          const exportButton = document.createElement("button");
+          exportButton.type = "button";
+          exportButton.textContent = "Export";
+          exportButton.addEventListener("click", () => downloadBuild(record));
+
+          const deleteButton = document.createElement("button");
+          deleteButton.type = "button";
+          deleteButton.textContent = "Delete";
+          deleteButton.className = "saved-build-delete";
+          deleteButton.addEventListener("click", () => {
+            if (!window.confirm("Delete \"" + record.name + "\" from your saved builds?")) return;
+            const remaining = readSavedBuilds().filter(item => item.id !== record.id);
+            if (writeSavedBuilds(remaining)) {
+              renderSavedBuildList();
+              notify("Deleted \"" + record.name + "\".");
+            }
+          });
+
+          actions.append(loadButton, exportButton, deleteButton);
+          row.append(information, actions);
+          list.appendChild(row);
+        }
+      }
+
+      function showPane(mode) {
+        const saving = mode === "save";
+        savePane.hidden = !saving;
+        managePane.hidden = saving;
+        title.innerHTML = saving ? "Save a <span>build.</span>" : "Your <span>builds.</span>";
+        description.textContent = saving
+          ? "Give this structure a name. It will be saved in this browser."
+          : "Load a previous structure, export a portable copy, or remove a build.";
+        if (saving) {
+          nameInput.value = "";
+          window.setTimeout(() => nameInput.focus(), 0);
+        } else {
+          renderSavedBuildList();
+        }
+      }
+
+      document.getElementById("saveBuildButton").addEventListener("click", () => {
+        showPane("save");
+        if (!dialog.open) dialog.showModal();
+      });
+      document.getElementById("openBuildLibraryButton").addEventListener("click", () => {
+        showPane("manage");
+        if (!dialog.open) dialog.showModal();
+      });
+      dialog.querySelector("#closeBuildLibrary").addEventListener("click", () => dialog.close());
+      dialog.querySelector("#confirmSaveBuild").addEventListener("click", () => {
+        const record = saveCurrentBuild(nameInput.value);
+        if (record) dialog.close();
+      });
+      nameInput.addEventListener("keydown", event => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          const record = saveCurrentBuild(nameInput.value);
+          if (record) dialog.close();
+        }
+      });
+      dialog.querySelector("#importBuildButton").addEventListener("click", () => fileInput.click());
+      fileInput.addEventListener("change", async () => {
+        const file = fileInput.files && fileInput.files[0];
+        fileInput.value = "";
+        if (!file) return;
+        if (file.size > 8 * 1024 * 1024) {
+          notify("That build file is too large to import (8 MB maximum).");
+          return;
+        }
+        try {
+          const payload = JSON.parse(await file.text());
+          if (!payload || payload.format !== "framelabs3-build" ||
+              payload.version !== 1 || !validateImportedBuild(payload.snapshot)) {
+            notify("This is not a valid FrameLabs 3 build file.");
+            return;
+          }
+          const fallbackName = file.name.replace(/\.fl3build\.json$|\.json$/i, "");
+          const name = String(payload.name || fallbackName).trim()
+            .replace(/\s+/g, " ").slice(0, 48) || "Imported build";
+          const record = saveImportedBuild(name, payload.snapshot);
+          if (record) {
+            renderSavedBuildList();
+            notify("Imported \"" + record.name + "\" into your build library.");
+          }
+        } catch (error) {
+          console.error("FrameLabs 3 could not import this build.", error);
+          notify("The selected file could not be read as a FrameLabs 3 build.");
+        }
+      });
+
+      refreshSavedBuildCount();
     }
 
     function updateSimulationControls() {
@@ -2299,6 +2726,7 @@
         resetStructure();
       }
     });
+    initializeBuildLibraryUI();
     updateBuildModeUI();
     showScreen("menu");
     requestAnimationFrame(frame);
