@@ -28,6 +28,7 @@ const Color BG{8,8,17,255},Panel{12,12,25,255},Panel2{20,20,39,255},Line{55,53,8
 const Color Purple{125,121,207,255},Lilac{197,193,248,255},Text{229,226,250,255},Muted{139,136,171,255};
 enum class Screen{Menu,Game,Settings};
 enum class Tool{Select,Node,Member,Rope,Load,Heat,Explode,Ignite,Ladder,Stairs,Elevator,QuickBeam,QuickColumn,QuickBrace,Floor,Wall,Break,Delete,Exit};
+struct VisualEffect{Vec2 position{},velocity{};float life=1,maxLife=1,radius=.03f;int kind=0;};
 struct App{
  Screen screen=Screen::Menu; Tool tool=Tool::Select; MaterialKind material=MaterialKind::Steel;
  bool paused=false,stress=true; float zoom=1; Vector2 pan{0,0};
@@ -36,6 +37,7 @@ struct App{
  bool quickBuildDragging=false; Vec2 quickBuildStart{},quickBuildEnd{};
  bool namingBuild=false; std::string buildName="My Build";
  std::vector<Vec2> exits;
+ std::vector<VisualEffect> effects;float smokeEmission=0;
  std::string status="Ready — build a structure";
 };
 float clampf(float x,float a,float b){return std::max(a,std::min(b,x));}
@@ -81,6 +83,48 @@ bool loadLatestBuild(StructuralWorld& world,App& app){
  }catch(...){return false;}
 }
 
+void spawnEffects(App& app,Vec2 position,int count,int kind,float speed){
+ for(int i=0;i<count&&app.effects.size()<1800;++i){
+  const float angle=static_cast<float>(GetRandomValue(0,6283))*.001f;
+  const float velocity=speed*(.35f+static_cast<float>(GetRandomValue(0,1000))*.001f);
+  VisualEffect p;p.position=position;p.velocity={std::cos(angle)*velocity,std::sin(angle)*velocity+(kind==1||kind==3?.5f:0.0f)};
+  p.kind=kind;p.maxLife=kind==1?2.4f:kind==2?.42f:kind==3?.8f:1.15f;
+  p.life=p.maxLife*(.65f+static_cast<float>(GetRandomValue(0,350))*.001f);
+  p.radius=(kind==1?.035f:kind==2?.018f:kind==3?.026f:.028f)*(0.7f+static_cast<float>(GetRandomValue(0,700))*.001f);
+  app.effects.push_back(p);
+ }
+}
+void updateEffects(App& app,const StructuralWorld& world,float dt){
+ for(auto& p:app.effects){
+  p.position.x+=p.velocity.x*dt;p.position.y+=p.velocity.y*dt;
+  const float drag=std::exp(-(p.kind==2?1.8f:.75f)*dt);
+  p.velocity.x*=drag;p.velocity.y*=drag;
+  p.velocity.y+=(p.kind==1?.28f:p.kind==3?1.25f:-1.5f)*dt;
+  p.life-=dt;
+ }
+ app.effects.erase(std::remove_if(app.effects.begin(),app.effects.end(),[](const VisualEffect& p){return p.life<=0;}),app.effects.end());
+ app.smokeEmission+=dt;
+ if(app.smokeEmission>=.085f){
+  app.smokeEmission=0;
+  for(const auto& member:world.members())if(member.ignited&&!member.broken&&!member.segments.empty()){
+   const auto& segment=member.segments[member.segments.size()/2];
+   spawnEffects(app,segment.center,2,1,.12f);
+   spawnEffects(app,segment.center,1,3,.22f);
+  }
+ }
+}
+void drawEffects(const App& app,const App& view){
+ (void)view;
+ for(const auto& p:app.effects){
+  const Vector2 at=worldToScreen(p.position,app);
+  const float fade=clampf(p.life/std::max(.001f,p.maxLife),0,1);
+  const unsigned char alpha=static_cast<unsigned char>(255*fade);
+  Color color=p.kind==0?Color{164,151,132,alpha}:p.kind==1?Color{112,111,125,static_cast<unsigned char>(alpha*.72f)}:
+   p.kind==2?Color{255,174,87,alpha}:Color{255,103,45,alpha};
+  const float radius=p.radius*scale(app)*(p.kind==1?1.0f+.9f*(1-fade):1.0f);
+  DrawCircleV(at,std::max(1.0f,radius),color);
+ }
+}
 Color materialColor(MaterialKind m){auto c=materialProfile(m).color;return {c.r,c.g,c.b,255};}
 const char* materialName(MaterialKind m){return materialProfile(m).label;}
 Color stressColor(float s){
@@ -188,6 +232,7 @@ void drawWorld(const StructuralWorld&w,App&a){
   if(m.id==a.selectedMember){DrawCircleV(worldToScreen(m.start,a),10,Lilac);DrawCircleV(worldToScreen(m.end,a),10,Lilac);}
  }
  for(const auto&l:w.loads()){Vector2 p=worldToScreen(l.position,a);DrawCircleV(p,l.radius*step,Color{236,173,99,255});DrawCircleLines((int)p.x,(int)p.y,(int)(l.radius*step),Text);DrawText(TextFormat("%.0f kg",l.massKg),(int)p.x+18,(int)p.y-8,10,Text);}
+ drawEffects(a,a);
  for(const auto& e:a.exits){Vector2 p=worldToScreen(e,a);DrawCircleV(p,8,Color{105,196,157,255});DrawCircleLines((int)p.x,(int)p.y,13,Text);DrawText("EXIT",(int)p.x+11,(int)p.y-5,8,Color{145,220,180,255});}
  if(a.quickBuildDragging){Vector2 p0=worldToScreen(a.quickBuildStart,a),p1=worldToScreen(a.quickBuildEnd,a);DrawLineEx(p0,p1,5,Purple);DrawCircleV(p0,5,Lilac);DrawCircleV(p1,5,Lilac);}
  for(const auto&n:w.nodes()){Vector2 p=worldToScreen(n.position,a);Color c=n.pinned?Color{244,192,105,255}:Color{210,208,242,255};DrawCircleV(p,n.id==a.selectedNode?10:6,c);DrawCircleLines((int)p.x,(int)p.y,n.id==a.selectedNode?14:9,Color{30,29,54,255});}
@@ -290,7 +335,7 @@ void input(StructuralWorld&w,App&a){
  Vec2 p=screenToWorld(mouse,a);
  if(a.tool==Tool::Node){a.selectedNode=w.addNode(p,false);a.status="Node added";return;}
  if(a.tool==Tool::Exit){a.exits.push_back(p);a.status="Evacuation exit marker placed";return;}
- if(a.tool==Tool::Break||a.tool==Tool::Delete){MemberId target=w.findMemberNear(p,.30f);if(target){w.removeMember(target);a.status=a.tool==Tool::Break?"Member fractured — fragments released":"Member deleted";if(a.selectedMember==target)a.selectedMember=0;}else{NodeId node=w.findNodeNear(p,.28f);if(node){w.removeNode(node);a.status="Node deleted";}else{auto load=w.findLoadNear(p,.4f);if(load){w.removeLoad(load);a.status="Load deleted";}else a.status="Nothing to remove here";}}return;}
+ if(a.tool==Tool::Break||a.tool==Tool::Delete){MemberId target=w.findMemberNear(p,.30f);if(target){w.removeMember(target);if(a.tool==Tool::Break){spawnEffects(a,p,22,0,.8f);spawnEffects(a,p,9,2,1.8f);a.status="Member fractured — fragments released";}else{spawnEffects(a,p,7,0,.25f);a.status="Member removed from the visible structure";}if(a.selectedMember==target)a.selectedMember=0;}else{NodeId node=w.findNodeNear(p,.28f);if(node){w.removeNode(node);a.status="Node deleted";}else{auto load=w.findLoadNear(p,.4f);if(load){w.removeLoad(load);a.status="Load deleted";}else a.status="Nothing to remove here";}}return;}
  if(a.tool==Tool::Floor||a.tool==Tool::Wall){NodeId n=w.findNodeNear(p,.34f);if(!n){a.status="Floor/Wall mode: click existing frame nodes";return;}if(!a.firstNode){a.firstNode=n;a.status="First support selected — click the opposite support";return;}Vec2 start{},end{};w.getNodePosition(a.firstNode,start);w.getNodePosition(n,end);if(a.tool==Tool::Floor){Vec2 aligned{end.x,start.y};NodeId panelEnd=w.addNode(aligned,false);w.addMember(n,panelEnd,a.material,MemberRole::Column);MemberId panel=w.addMember(a.firstNode,panelEnd,a.material,MemberRole::Slab);a.selectedMember=panel;a.status=panel?"Floor panel snapped level and connected":"Could not create floor panel";}else{Vec2 aligned{start.x,end.y};NodeId panelEnd=w.addNode(aligned,false);w.addMember(n,panelEnd,a.material,MemberRole::Beam);MemberId panel=w.addMember(a.firstNode,panelEnd,a.material,MemberRole::Wall);a.selectedMember=panel;a.status=panel?"Wall panel snapped plumb and connected":"Could not create wall panel";}a.firstNode=0;return;}
  if(a.tool==Tool::Member||a.tool==Tool::Rope){
   NodeId n=w.findNodeNear(p,.35f);
@@ -316,8 +361,8 @@ void input(StructuralWorld&w,App&a){
   return;
  }
  if(a.tool==Tool::Load){w.addLoad(p,220);a.status="220 kg test load added";return;}
- if(a.tool==Tool::Explode){w.explode(p,1.65f,18.0f);a.status="In-game blast triggered";return;}
- if(a.tool==Tool::Ignite){w.ignite(p,.55f);a.status="Ignition applied to flammable composite";return;}
+ if(a.tool==Tool::Explode){w.explode(p,1.65f,18.0f);spawnEffects(a,p,70,0,2.1f);spawnEffects(a,p,38,2,3.2f);a.status="In-game blast triggered";return;}
+ if(a.tool==Tool::Ignite){w.ignite(p,.55f);spawnEffects(a,p,12,3,.7f);spawnEffects(a,p,6,1,.18f);a.status="Ignition applied to flammable composite";return;}
  if(a.tool==Tool::Select){NodeId n=w.findNodeNear(p,.28f);a.selectedNode=n;a.selectedMember=w.findMemberNear(p,.22f);if(!n&&!a.selectedMember){auto load=w.findLoadNear(p,.4f);if(load)w.removeLoad(load);}a.status=n?"Node selected":a.selectedMember?"Member selected":"Selection cleared";}
 }
 }
@@ -326,7 +371,7 @@ int main(){
  App app;StructuralWorld world;float accumulator=0;constexpr float fixed=1.0f/120.0f;
  while(!WindowShouldClose()){
   float dt=std::min(GetFrameTime(),.05f);
-  if(app.screen==Screen::Game){input(world,app);if(!app.paused){accumulator+=dt;while(accumulator>=fixed){world.step(fixed);accumulator-=fixed;}}}
+  if(app.screen==Screen::Game){input(world,app);if(!app.paused){updateEffects(app,world,dt);accumulator+=dt;while(accumulator>=fixed){world.step(fixed);accumulator-=fixed;}}}
   BeginDrawing();ClearBackground(BG);
   if(app.screen==Screen::Menu)drawMenu(app);else if(app.screen==Screen::Settings)drawSettings(app);else{
    DrawRectangle(0,0,GetScreenWidth(),Top,BG);DrawLine(0,Top-1,GetScreenWidth(),Top-1,Line);brand();
