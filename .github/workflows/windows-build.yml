@@ -11,6 +11,12 @@ on:
       - "native/**"
       - "scripts/**"
       - "tests/**"
+      - "app.js"
+      - "world-systems.js"
+      - "occupant-simulation.js"
+      - "agent-five-fl3.js"
+      - "index.html"
+      - "styles.css"
       - ".github/workflows/windows-build.yml"
   pull_request:
     branches:
@@ -20,6 +26,12 @@ on:
       - "native/**"
       - "scripts/**"
       - "tests/**"
+      - "app.js"
+      - "world-systems.js"
+      - "occupant-simulation.js"
+      - "agent-five-fl3.js"
+      - "index.html"
+      - "styles.css"
       - ".github/workflows/windows-build.yml"
   workflow_dispatch:
 
@@ -38,7 +50,11 @@ jobs:
         run: cmake -S . -B build -A x64 -DCMAKE_BUILD_TYPE=Release
 
       - name: Validate browser simulation JavaScript
-        run: node --check app.js
+        run: |
+          node --check app.js
+          node --check world-systems.js
+          node --check occupant-simulation.js
+          node --check agent-five-fl3.js
 
       - name: Compile native application
         run: cmake --build build --config Release --parallel
