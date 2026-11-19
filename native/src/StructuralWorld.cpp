@@ -1069,6 +1069,9 @@ void StructuralWorld::step(float dt) {
         }
         if(m.stress>1.0f||m.fatigue>fatigueLimit) m.broken=true;
     }
+    // Fracture removes the broken member's contribution from connected node
+    // masses, matching the browser solver's recalculateNodeMasses() pass.
+    w.rebuildNodeMasses();
     w.updateConnectors(dt);
     w.rebuildViews();
     }
